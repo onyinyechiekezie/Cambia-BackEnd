@@ -13,4 +13,15 @@ describe('Authentication service tests', () => {
         await mongoose.connection.close(); 
     });
 
+    beforeEach(async() => {
+        authService = new AuthServiceImpl();
+        jest.clearAllMocks();
+        bcrypt.hash.mockResolvedValue('hashedPassword');
+        bcrypt.compare.mockResolvedValue(true);
+        uuidv4.mockReturnValue('generated-uuid');
+
+        await User.deleteMany({});
+        jest.spyOn(User, 'findOne');
+    });
+
 })
