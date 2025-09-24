@@ -1,3 +1,5 @@
+const test = require('node:test');
+
 require('dotenv').config();
 
 module.exports = {
@@ -5,5 +7,5 @@ module.exports = {
     suiNetwork: process.env.SUI_NETWORK || 'testnet',
     jwtSecret: process.env.JWT,
     mongodbUri: process.env.MONGODB_URI,
-
+    testDbUri: process.env.MONGODB_TEST_URI
 }

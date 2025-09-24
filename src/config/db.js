@@ -1,8 +1,9 @@
 const mongoose = require('mongoose');
-const { mongodbUri } = require('./env');
+const { mongodbUri, testDbUri } = require('./env');
 const connectDB = async () => {
     try {
-        await mongoose.connect(mongodbUri, { 
+        const uri = process.env.NODE_ENV === 'test' ? testDbUri : mongodbUri;
+        await mongoose.connect(uri, { 
             useNewUrlParser: true, 
             useUnifiedTopology: true 
         });
