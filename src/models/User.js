@@ -1,9 +1,4 @@
-
-
-        this.role = Object.values(Roles).includes(role);
-        this.walletAddress = walletAddress;
-    }
-}
+const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
     id: {type: String, unique: true},
