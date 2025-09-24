@@ -1,4 +1,4 @@
-const e = require("express");
+const Joi = require("joi");
 
 const loginValidator = Joi.object({
     email: Joi.string().email().required(),

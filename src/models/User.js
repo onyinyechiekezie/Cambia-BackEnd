@@ -14,14 +14,3 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
-
-
-const loginValidator = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().required(),
-});
-
-module.exports = {
-  registerValidator,
-  loginValidator,
-};
