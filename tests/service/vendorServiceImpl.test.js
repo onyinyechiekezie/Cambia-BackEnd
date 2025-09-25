@@ -87,6 +87,23 @@ describe('VendorServiceImpl (real MongoDB)', () => {
     expect(updated.price).toBe(75);
   });
 
+  test('should get vendor products', async () => {
+    await Product.create({
+      name: 'Vendor Product',
+      description: 'get test',
+      price: 200,
+      quantityAvailable: 2,
+      unit: 'kg',
+      vendor: vendor._id,
+    });
+
+    const products = await vendorService.getVendorProducts(vendor._id);
+    expect(Array.isArray(products)).toBe(true);
+    expect(products.length).toBe(1);
+    expect(products[0].vendor.toString()).toBe(vendor._id.toString());
+  });
+
+
 
 
 
