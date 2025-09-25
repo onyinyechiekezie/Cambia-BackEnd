@@ -1,6 +1,9 @@
 const AuthServiceImpl = require('../../src/services/authServiceImpl');
 const User = require('../../src/models/User');
 const bcrypt = require('bcrypt');
+const mongoose = require('mongoose');
+const connectDB = require('../../src/config/db');
+const ResponseDTO = require('../../src/dto/response/userRegisterRes');
 const { describe } = require('yargs');
 const test = require('node:test');
 
@@ -41,6 +44,13 @@ describe('Authentication service tests', () => {
         }
     });
 
-    test("test should register user and return success", async() => {});
+    test("test should register sender and return success", async() => {
+        const result = await authService.register(validData);
+
+        expect(result).toBeInstanceOf(ResponseDTO);
+        expect(validData.role).toBe("sender");
+       
+
+    });
 
 })

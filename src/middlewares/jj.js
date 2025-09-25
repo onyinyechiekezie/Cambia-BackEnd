@@ -1,7 +1,5 @@
 const AuthServiceImpl = require('../services/authServiceImpl');
 const AuthResponseDTO = require('../dto/res/auth.dto');
-const User = require('../models/user');
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
