@@ -21,12 +21,16 @@ class AuthServiceImpl extends AuthService {
         if (existingUser) throw new Error("Email already exists");
         
         const hashedPassword =  await bcrypt.hash(validated.hashedPassword, 10);
-        const userData = { id, ...validated, password: hashedPassword };
+        const userData = { ...validated, password: hashedPassword };
 
-        const user = await User.create(userData);
-
-        if(user.role === 'sender') await Sender.create(userData);
-        else if(user.role == "vendor") await Vendor.create(user);
+        let user;
+        if(user.role === 'sender') {
+            user = await Sender.create(userData);
+        } else if(user.role == "vendor") {
+            user = await Vendor.create(user);
+        } else {
+            throw new Error("Invalid role");
+        }
 
         return new AuthResponse("User registered successfully", true)
     }
