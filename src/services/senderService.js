@@ -12,4 +12,8 @@ class SenderService {
     async fundOrder(fundRequest) {
         throw new Error("Method not implemented");
     }
+
+    async trackOrder(trackRequest) {
+        throw new Error("Method not implemented");
+    }
 }
