@@ -33,13 +33,13 @@ describe('Authentication service tests', () => {
     };
 
     const vendorData = {
-            email: "123@example.com",
-            firstName: "Ibrahim",
+            email: "bram@example.com",
+            firstName: "Adedeji",
             lastName: "Doe",
             password: "password",
             walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            role: "sender",
-            phone: "07015366234",
+            role: "receiver",
+            phone: "08015366234",
             address: "123 Main St, Lagos"
     };
 
