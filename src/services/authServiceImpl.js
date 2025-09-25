@@ -2,6 +2,14 @@ const AuthService = require('./authService');
 const RegisterRequest = require("../dtos/request/userRegisterReq");
 const AuthResponse = require("../dtos/response/AuthResponse");
 const User = require('../models/User');
+const Sender = require('../models/Sender');
+const Vendor = require('../models/Vendor');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const { jwtSecret } = require("..comfig.env");
+const RegisterValidator = require('../validators/registerValidator')
+const LoginValidator = require('../validators/loginValidator')
 
 class AuthServiceImpl extends AuthService {
     constructor() {
@@ -9,12 +17,33 @@ class AuthServiceImpl extends AuthService {
     }
 
     async register(registerRequest) {
-        const validated = RegisterRequest.validate(registerRequest)
+        const validated = RegisterValidator.validate(registerRequest)
 
         const existingUser = await User.findOne({ email: validated.email });
-        if (existing) throw new Error("Enail already exists");
+        if (existingUser) throw new Error("Enail already exists");
         
-        
+        const id = uuidv4();
+        const hashedPassword =  await bcrypt.hash(validated.hashedPassword, 10);
+        const userData = { id, ...validated, password: hashedPassword };
+
+        const user = await User.create(userData);
+
+        if(user.role === 'sender') await Sender.create(userData);
+        else if(user.role == "vendor") await VENDOR.create(user);
+
+        return AuthResponse
+    }
+
+    async login(loginRequest) {
+        const validated = LoginValidator.validate(loginRequest);
+
+        const user = await User.findOne({ email: validated.email})
+        if(!user) throw new Error("Invalid email");
+
+        const isPasswordValid = await bcrypt.compare(validated.password, user.password);
+        if(!isPasswordValid) throw new Error("Invalid password");
+
+        const token = jwtSecret.s
     }
 
 }
