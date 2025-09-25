@@ -1,9 +1,6 @@
-const User = require("./User");
+const mongoose = require('mongoose');
+const userSchema = require('./User').schema;
 
-class Sender extends User {
-    constructor(id, firstName, lastName, phone, email, address, role, walletAddress) {
-        super(id, firstName, lastName, phone, email, address, role, walletAddress);
-    }
-}
+const senderSchema = new mongoose.Schema(userSchema.obj);
 
-module.exports = Sender;
+module.exports = mongoose.model('Sender', senderSchema);
