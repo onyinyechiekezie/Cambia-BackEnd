@@ -1,9 +1,20 @@
 const AuthServiceImpl = require('../../src/services/authServiceImpl');
 const User = require('../../src/models/User');
 const bcrypt = require('bcrypt');
+const { v4: uuidv4 } = require('uuid')
 const mongoose = require('mongoose');
 const connectDB = require('../../src/config/db');
 const ResponseDTO = require('../../src/dtos/response/userRegisterRes.js');
+
+jest.mock("bcrypt", ()=> ({
+    hash: jest.fn(),
+    compare: jest.fn(),
+}));
+
+jest.mock('uuid', ()=> ({
+    v4: jest.fn(),
+}));
+
 
 describe('Authentication service tests', () => {
     let authService;
@@ -21,6 +32,7 @@ describe('Authentication service tests', () => {
     beforeEach(async() => {
         authService = new AuthServiceImpl();
         jest.clearAllMocks();
+        
         bcrypt.hash.mockResolvedValue('hashedPassword');
         bcrypt.compare.mockResolvedValue(true);
         uuidv4.mockReturnValue('generated-uuid');
@@ -40,9 +52,8 @@ describe('Authentication service tests', () => {
             phone: "07015366234",
             address: "123 Main St, Lagos"
         }
-    });
 
-    test("test should register sender and return success", async() => {
+        test("test should register sender and return success", async() => {
         const result = await authService.register(validData);
 
         expect(result).toBeInstanceOf(ResponseDTO);
@@ -55,5 +66,8 @@ describe('Authentication service tests', () => {
        
 
     });
+    });
+
+    
 
 })
