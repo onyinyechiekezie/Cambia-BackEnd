@@ -1,6 +1,6 @@
 const AuthService = require('./authService');
 const RegisterRequest = require("../dtos/request/userRegisterReq");
-const AuthResponse = require("")
+const AuthResponse = require("../dtos/response/AuthResponse")
 
 class AuthServiceImpl extends AuthService {
     constructor() {
@@ -8,7 +8,7 @@ class AuthServiceImpl extends AuthService {
     }
 
     async register(authData) {
-        const validated = 
+        const validated = RegisterRequest.validate(authData)
     }
 
 }
