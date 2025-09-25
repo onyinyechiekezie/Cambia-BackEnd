@@ -3,7 +3,7 @@ const test = require('node:test');
 require('dotenv').config();
 
 module.exports = {
-    port: process.env.PORT || 3000,
+    port: process.env.PORT,
     suiNetwork: process.env.SUI_NETWORK || 'testnet',
     jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRY_TIME,
