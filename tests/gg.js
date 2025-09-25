@@ -1,59 +1,16 @@
-// src/services/authServiceImpl.js
-const AuthService = require('./authService');
-const RegisterRequestDTO = require('../dto/req/register.dto');
-const LoginRequestDTO = require('../dto/req/login.dto');
-const AuthResponseDTO = require('../dto/res/auth.dto');
-const User = require('../models/User');
-const Sender = require('../models/Sender');
-const Vendor = require('../models/Vendor');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const { jwtSecret } = require('../config/env');
+const Joi = require('joi');
 
-class AuthServiceImpl extends AuthService {
-  constructor() {
-    super();
-  }
+class LoginValidator {
+  static schema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().min(6).required(),
+  });
 
-  async register(authData) {
-    const validated = RegisterRequestDTO.validate(authData);
-
-    const existing = await User.findOne({ email: validated.email });
-    if (existing) throw new Error('Email already exists');
-
-    const id = uuidv4();
-    const hashedPassword = await bcrypt.hash(validated.password, 10);
-
-    const userData = { id, ...validated, password: hashedPassword };
-
-    // Save to central users collection
-    const user = await User.create(userData);
-
-    // Save to role-specific collection
-    if (user.role === 'sender') await Sender.create(userData);
-    else if (user.role === 'vendor') await Vendor.create(userData);
-
-    return AuthResponseDTO.fromUserData(user);
-  }
-
-  async login(authData) {
-    const validated = LoginRequestDTO.validate(authData);
-
-    const user = await User.findOne({ email: validated.email });
-    if (!user) throw new Error('Invalid email or password');
-
-    const isPasswordValid = await bcrypt.compare(validated.password, user.password);
-    if (!isPasswordValid) throw new Error('Invalid email or password');
-
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
-      jwtSecret,
-      { expiresIn: '1h' }
-    );
-
-    return { token, user: AuthResponseDTO.fromUserData(user) };
+  static validate(data) {
+    const { error, value } = this.schema.validate(data, { abortEarly: false });
+    if (error) throw new Error(`Validation error: ${error.message}`);
+    return value;
   }
 }
 
-module.exports = AuthServiceImpl;
+module.exports = LoginValidator;

@@ -1,15 +1,22 @@
 const Joi = require("joi");
-const Roles = require("../models/Roles");
 
-const registerValidator = Joi.object({
-    email: Joi.string().email().required(),
-    firstName: Joi.string().min(2).max(50).required(),
-    labeledStatement: Joi.string().min(2).max(50).required(),
-    password: Joi.string().min(8).max(16).required(),
-    walletAddress: Joi.string().pattern(/^0x[a-fA-F0-9]{64}$/).required(),
-    phone: Joi.string().min(10).max(15).optional(),
-    address: Joi.string().optional(),
-    role: Joi.string().valid(...Object.values(Roles)).default(Roles.SENDER),
-});
+class RegisterValidator {
+    static schema = Joi.object({
+        email: Joi.string().email().required(),
+        firstName: Joi.string().required(),
+        lastName: Joi.string().required(),
+        password: Joi.string().min(8).max(16).required(),
+        walletAddress: Joi.string().pattern(/^0x[a-fA-F0-9]{64}$/).required(),
+        phone: Joi.string().min(10).max(15).optional(),
+        address: Joi.string().optional(),
+        role: Joi.string().valid("sender", "vendor").required(),
+    });
 
-module.exports = registerValidator;
+    static validate(data) {
+    const { error, value } = this.schema.validate(data, { abortEarly: false });
+    if (error) throw new Error(`Validation error: ${error.message}`);
+    return value;
+  }
+};
+
+module.exports = RegisterValidator;
