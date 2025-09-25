@@ -139,7 +139,7 @@ describe('Authentication service tests', () => {
 
         test("test can login sender returns success and token", async()=>{
             const hashedPassword = await bcrypt.hash(vendorData.password, 10);
-            await Sender.create({ ...vendorData, password: hashedPassword });
+            await Vendor.create({ ...vendorData, password: hashedPassword });
 
             const result = await authService.login({
                 email: vendorData.email,
@@ -152,7 +152,17 @@ describe('Authentication service tests', () => {
             expect(result.user).toBeInstanceOf(AuthResponse);
             expect(result.user.status).toBe(true);
             expect(result.user.message).toBe("Login successful") 
-        })
-    })
+        });
 
+        test("test should throw error for invalid email", async ()=> {
+            await expect(
+                authService.login({ email: "lolad3@gmail.com", password: "password"})
+            ).rejects.toThrow("Invalid email");
+        });
+
+        test("should throw error for invalid input data", async()=> {
+            const invalidData = { email: "", pasword: "" };
+            await expect(authService.login(invalidData)).rejects.toThrow();
+        });
+    })
 });
