@@ -1,8 +1,16 @@
-const Joi = require("joi");
+const Joi = require('joi');
 
-const loginValidator = Joi.object({
+class LoginValidator {
+  static schema = Joi.object({
     email: Joi.string().email().required(),
-    password: Joi.string().required(),
-});
+    password: Joi.string().min(8).max(16).required(),
+  });
 
-module.exports = loginValidator;
+  static validate(data) {
+    const { error, value } = this.schema.validate(data, { abortEarly: false });
+    if (error) throw new Error(`Validation error: ${error.message}`);
+    return value;
+  }
+}
+
+module.exports = LoginValidator;
