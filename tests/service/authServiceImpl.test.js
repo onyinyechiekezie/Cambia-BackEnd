@@ -4,8 +4,6 @@ const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const connectDB = require('../../src/config/db');
 const ResponseDTO = require('../../src/dtos/response/userRegisterRes.js');
-const { describe } = require('yargs');
-const test = require('node:test');
 
 describe('Authentication service tests', () => {
     let authService;
