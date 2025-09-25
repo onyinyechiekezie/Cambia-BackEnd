@@ -1,27 +1,8 @@
-const AuthService = require('./authService');
-const User = require('../models/User');
-const Sender = require('../models/Sender');
-const Vendor = require('../models/Vendor');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const { jwtSecret } = require('../config/env');
-const RegisterValidator = require('../validators/registerValidator');
-const LoginValidator = require('../validators/loginValidator');
-const AuthResponseDTO = require('../dto/res/auth.dto');
+
 
 class AuthServiceImpl extends AuthService {
-  constructor() {
-    super();
-  }
-
-  async register(re) {
-    const validated = RegisterValidator.validate(authData);
-
-    const existing = await User.findOne({ email: validated.email });
-    if (existing) throw new Error('Email already exists');
-
-    const id = uuidv4();
+  
+  
     const hashedPassword = await bcrypt.hash(validated.password, 10);
     const userData = { id, ...validated, password: hashedPassword };
 
@@ -48,7 +29,7 @@ class AuthServiceImpl extends AuthService {
       { expiresIn: '1h' }
     );
 
-    return { token, user: AuthResponseDTO.fromUserData(user) };
+    return { };
   }
 }
 

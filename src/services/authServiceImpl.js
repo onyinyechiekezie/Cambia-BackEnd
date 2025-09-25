@@ -29,7 +29,7 @@ class AuthServiceImpl extends AuthService {
         const user = await User.create(userData);
 
         if(user.role === 'sender') await Sender.create(userData);
-        else if(user.role == "vendor") await VENDOR.create(user);
+        else if(user.role == "vendor") await Vendor.create(user);
 
         return AuthResponse
     }
@@ -43,7 +43,13 @@ class AuthServiceImpl extends AuthService {
         const isPasswordValid = await bcrypt.compare(validated.password, user.password);
         if(!isPasswordValid) throw new Error("Invalid password");
 
-        const token = jwtSecret.s
+        const token = jwt.sign(
+            { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
+            jwtSecret,
+            { expiredIn: "1h"}
+
+            return { token, user: AuthResponse.fromUserData(user) }
+        );
     }
 
 }
