@@ -73,6 +73,21 @@ describe('VendorServiceImpl (real MongoDB)', () => {
     expect(updated.quantityAvailable).toBe(20);
   });
 
+  test('should update product price', async () => {
+    const product = await Product.create({
+      name: 'Price Product',
+      description: 'price test',
+      price: 50,
+      quantityAvailable: 5,
+      unit: 'pcs',
+      vendor: vendor._id,
+    });
+
+    const updated = await vendorService.updateProductPrice(vendor._id, product._id, 75);
+    expect(updated.price).toBe(75);
+  });
+
+
 
 
   });
