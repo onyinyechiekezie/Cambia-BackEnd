@@ -5,5 +5,11 @@ class SenderService {
         }
     }
 
-    async 
+    async placeOrder(orderRequest) {
+        throw new Error("Method not implemented");
+    }
+
+    async fundOrder(fundRequest) {
+        throw new Error("Method not implemented");
+    }
 }
