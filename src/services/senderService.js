@@ -16,4 +16,8 @@ class SenderService {
     async trackOrder(trackRequest) {
         throw new Error("Method not implemented");
     }
+
+    async confirmReceipt(confirmRequest) {
+        throw new Error("Method not implemented")
+    }
 }
