@@ -4,3 +4,5 @@ class UserRegisterRes {
         this.status = Boolean(status);
     }
 }
+
+module.exports = UserRegisterRes;

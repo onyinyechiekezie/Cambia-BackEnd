@@ -1,135 +1,125 @@
-const AuthServiceImpl = require('../services/authServiceImpl');
-const AuthResponseDTO = require('../dto/res/auth.dto');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const mongoose = require('mongoose');
-const connectDB = require('../config/db'); // your db.js
+// const AuthServiceImpl = require('../services/authServiceImpl');
+// const AuthResponseDTO = require('../dto/res/auth.dto');
+// const jwt = require('jsonwebtoken');
+// const { v4: uuidv4 } = require('uuid');
+// const mongoose = require('mongoose');
+// const connectDB = require('../config/db'); // your db.js
 
-jest.mock('bcrypt');
-jest.mock('jsonwebtoken');
-jest.mock('uuid');
-jest.mock('@mysten/sui.js', () => ({
-  SuiClient: jest.fn().mockImplementation(() => ({})),
-  getFullnodeUrl: jest.fn().mockReturnValue('https://testnet.sui.io'),
-  TransactionBlock: jest.fn(),
-}));
+// jest.mock('bcrypt');
+// jest.mock('jsonwebtoken');
+// jest.mock('uuid');
+// jest.mock('@mysten/sui.js', () => ({
+//   SuiClient: jest.fn().mockImplementation(() => ({})),
+//   getFullnodeUrl: jest.fn().mockReturnValue('https://testnet.sui.io'),
+//   TransactionBlock: jest.fn(),
+// }));
 
-describe('AuthServiceImpl', () => {
-  let authService;
+// describe('AuthServiceImpl', () => {
+//   let authService;
 
-  beforeAll(async () => {
-    process.env.NODE_ENV = 'test'; // ensure persistent test DB is used
-    await connectDB();              // connect to your test DB
-    console.log('Connected to persistent test DB for manual inspection.');
-  });
+//   beforeAll(async () => {
+//     process.env.NODE_ENV = 'test'; // ensure persistent test DB is used
+//     await connectDB();              // connect to your test DB
+//     console.log('Connected to persistent test DB for manual inspection.');
+//   });
 
-  afterAll(async () => {
-    await mongoose.connection.close(); // close DB connection after tests
-  });
+//   afterAll(async () => {
+//     await mongoose.connection.close(); // close DB connection after tests
+//   });
 
-  beforeEach(async () => {
-    authService = new AuthServiceImpl();
-    jest.clearAllMocks();               // reset mocks between tests
+//   beforeEach(async () => {
+//     authService = new AuthServiceImpl();
+//     jest.clearAllMocks();               // reset mocks between tests
 
-    bcrypt.hash.mockResolvedValue('hashedPassword');
-    bcrypt.compare.mockResolvedValue(true);
-    jwt.sign.mockReturnValue('mockToken');
-    uuidv4.mockReturnValue('generated-uuid');
+//     bcrypt.hash.mockResolvedValue('hashedPassword');
+//     bcrypt.compare.mockResolvedValue(true);
+//     jwt.sign.mockReturnValue('mockToken');
+//     uuidv4.mockReturnValue('generated-uuid');
 
-    await User.deleteMany({});          // clear test data between tests
-    jest.spyOn(User, 'findOne');        // spy on findOne for assertions
-  });
+//     await User.deleteMany({});          // clear test data between tests
+//     jest.spyOn(User, 'findOne');        // spy on findOne for assertions
+//   });
 
-  describe('register', () => {
-    const validData = {
-      email: 'ibrahim@example.com',
-      firstName: 'Ibrahim',
-      lastName: 'Doe',
-      password: 'password123456',
-      walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-      role: 'sender',
-      phone: '1234567890',
-      address: '123 Main St, Lagos',
-    };
 
-    test('should register user and return AuthResponseDTO', async () => {
-      const result = await authService.register(validData);
 
-      expect(result).toBeInstanceOf(AuthResponseDTO);
-      expect(result.id).toBe('generated-uuid');
-      expect(result.email).toBe(validData.email);
-      expect(result.role).toBe(validData.role);
+//     test('should register user and return AuthResponseDTO', async () => {
+//       const result = await authService.register(validData);
 
-      const savedUser = await User.findOne({ email: validData.email });
-      expect(savedUser).toBeTruthy();
-      expect(savedUser.id).toBe('generated-uuid');
-      expect(User.findOne).toHaveBeenCalledWith({ email: validData.email });
-    });
+//       expect(result).toBeInstanceOf(AuthResponseDTO);
+//       expect(result.id).toBe('generated-uuid');
+//       expect(result.email).toBe(validData.email);
+//       expect(result.role).toBe(validData.role);
 
-    test('should throw error for invalid registration data', async () => {
-      const invalidData = { email: 'invalid', password: 'short' };
-      await expect(authService.register(invalidData)).rejects.toThrow();
-    });
+//       const savedUser = await User.findOne({ email: validData.email });
+//       expect(savedUser).toBeTruthy();
+//       expect(savedUser.id).toBe('generated-uuid');
+//       expect(User.findOne).toHaveBeenCalledWith({ email: validData.email });
+//     });
 
-    test('should throw error for duplicate email', async () => {
-      await User.create({
-        id: uuidv4(),
-        email: validData.email,
-        password: 'hashedPassword',
-        walletAddress: validData.walletAddress,
-        role: validData.role,
-      });
+//     test('should throw error for invalid registration data', async () => {
+//       const invalidData = { email: 'invalid', password: 'short' };
+//       await expect(authService.register(invalidData)).rejects.toThrow();
+//     });
 
-      await expect(authService.register(validData)).rejects.toThrow('Email already exists');
-    });
-  });
+//     test('should throw error for duplicate email', async () => {
+//       await User.create({
+//         id: uuidv4(),
+//         email: validData.email,
+//         password: 'hashedPassword',
+//         walletAddress: validData.walletAddress,
+//         role: validData.role,
+//       });
 
-  describe('login', () => {
-    const validLoginData = {
-      email: 'ibrahim@example.com',
-      password: 'password123456',
-    };
+//       await expect(authService.register(validData)).rejects.toThrow('Email already exists');
+//     });
+//   });
 
-    test('should login user and return token with AuthResponseDTO', async () => {
-      await User.create({
-        id: 'user1',
-        email: validLoginData.email,
-        password: 'hashedPassword',
-        walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-        role: 'sender',
-      });
+//   describe('login', () => {
+//     const validLoginData = {
+//       email: 'ibrahim@example.com',
+//       password: 'password123456',
+//     };
 
-      const result = await authService.login(validLoginData);
+//     test('should login user and return token with AuthResponseDTO', async () => {
+//       await User.create({
+//         id: 'user1',
+//         email: validLoginData.email,
+//         password: 'hashedPassword',
+//         walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+//         role: 'sender',
+//       });
 
-      expect(result).toHaveProperty('token', 'mockToken');
-      expect(result.user).toBeInstanceOf(AuthResponseDTO);
-      expect(result.user.email).toBe(validLoginData.email);
-      expect(User.findOne).toHaveBeenCalledWith({ email: validLoginData.email });
-      expect(bcrypt.compare).toHaveBeenCalledWith(validLoginData.password, 'hashedPassword');
-      expect(jwt.sign).toHaveBeenCalled();
-    });
+//       const result = await authService.login(validLoginData);
 
-    test('should throw error for invalid login data', async () => {
-      const invalidData = { email: 'invalid', password: 'short' };
-      await expect(authService.login(invalidData)).rejects.toThrow();
-    });
+//       expect(result).toHaveProperty('token', 'mockToken');
+//       expect(result.user).toBeInstanceOf(AuthResponseDTO);
+//       expect(result.user.email).toBe(validLoginData.email);
+//       expect(User.findOne).toHaveBeenCalledWith({ email: validLoginData.email });
+//       expect(bcrypt.compare).toHaveBeenCalledWith(validLoginData.password, 'hashedPassword');
+//       expect(jwt.sign).toHaveBeenCalled();
+//     });
 
-    test('should throw error for unknown email', async () => {
-      await expect(authService.login(validLoginData)).rejects.toThrow('Invalid email or password');
-    });
+//     test('should throw error for invalid login data', async () => {
+//       const invalidData = { email: 'invalid', password: 'short' };
+//       await expect(authService.login(invalidData)).rejects.toThrow();
+//     });
 
-    test('should throw error for invalid password', async () => {
-      await User.create({
-        id: 'user1',
-        email: validLoginData.email,
-        password: 'hashedPassword',
-        walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-        role: 'sender',
-      });
+//     test('should throw error for unknown email', async () => {
+//       await expect(authService.login(validLoginData)).rejects.toThrow('Invalid email or password');
+//     });
 
-      bcrypt.compare.mockResolvedValue(false);
+//     test('should throw error for invalid password', async () => {
+//       await User.create({
+//         id: 'user1',
+//         email: validLoginData.email,
+//         password: 'hashedPassword',
+//         walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+//         role: 'sender',
+//       });
 
-      await expect(authService.login(validLoginData)).rejects.toThrow('Invalid email or password');
-    });
-  });
-});
+//       bcrypt.compare.mockResolvedValue(false);
+
+//       await expect(authService.login(validLoginData)).rejects.toThrow('Invalid email or password');
+//     });
+//   });
+// });

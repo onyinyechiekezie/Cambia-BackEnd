@@ -3,7 +3,7 @@ const User = require('../../src/models/User');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const connectDB = require('../../src/config/db');
-const ResponseDTO = require('../../src/dto/response/userRegisterRes');
+const ResponseDTO = require('../../src/dtos/response/userRegisterRes.js');
 const { describe } = require('yargs');
 const test = require('node:test');
 
@@ -49,6 +49,11 @@ describe('Authentication service tests', () => {
 
         expect(result).toBeInstanceOf(ResponseDTO);
         expect(validData.role).toBe("sender");
+
+        const savedUser = await User.findOne({email: validData.email});
+        expect(savedUser).toBeTruthy();
+        expect(savedUser.id).toBe("generated-uuid");
+        expect(savedUser.role).toBe("sender");
        
 
     });
