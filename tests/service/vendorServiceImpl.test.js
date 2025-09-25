@@ -59,5 +59,20 @@ describe('VendorServiceImpl (real MongoDB)', () => {
     expect(product.name).toBe(productData.name);
   });
 
+   test('should update product stock', async () => {
+    const product = await Product.create({
+      name: 'Stock Product',
+      description: 'stock test',
+      price: 50,
+      quantityAvailable: 5,
+      unit: 'pcs',
+      vendor: vendor._id,
+    });
+
+    const updated = await vendorService.updateProductStock(vendor._id, product._id, 20);
+    expect(updated.quantityAvailable).toBe(20);
+  });
+
+
 
   });
