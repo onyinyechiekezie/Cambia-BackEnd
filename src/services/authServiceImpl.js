@@ -1,5 +1,4 @@
 const AuthService = require('./authService');
-const RegisterRequest = require("../dtos/request/userRegisterReq");
 const AuthResponse = require("../dtos/response/AuthResponse");
 const User = require('../models/User');
 const Sender = require('../models/Sender');
@@ -31,7 +30,7 @@ class AuthServiceImpl extends AuthService {
         if(user.role === 'sender') await Sender.create(userData);
         else if(user.role == "vendor") await Vendor.create(user);
 
-        return AuthResponse
+        return new AuthResponse("User registered succesfully", true)
     }
 
     async login(loginRequest) {
@@ -47,9 +46,9 @@ class AuthServiceImpl extends AuthService {
             { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
             jwtSecret,
             { expiredIn: "1h"}
-
-            return { token, user: AuthResponse.fromUserData(user) }
         );
+        return { token, user: new AuthResponse("Login successful", true) }
     }
-
 }
+
+module.exports = AuthServiceImpl

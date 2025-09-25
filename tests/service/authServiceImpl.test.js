@@ -1,10 +1,13 @@
 const AuthServiceImpl = require('../../src/services/authServiceImpl');
 const User = require('../../src/models/User');
+const Sender = require('../../src/models/Sender');
+const Vendor = require('../../src/models/Vendor');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid')
+const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const connectDB = require('../../src/config/db');
-const ResponseDTO = require('../../src/dtos/response/AuthResponse.js');
+const AuthResponse = require('../../src/dtos/response/AuthResponse.js');
 
 jest.mock("bcrypt", ()=> ({
     hash: jest.fn(),
@@ -38,7 +41,9 @@ describe('Authentication service tests', () => {
         uuidv4.mockReturnValue('generated-uuid');
 
         await User.deleteMany({});
-        jest.spyOn(User, 'findOne');
+        await Sender.deleteMany({});
+        await Vendor.deleteMany({});
+        // jest.spyOn(User, 'findOne');
     });
 
     describe("register user", () => {
@@ -56,7 +61,8 @@ describe('Authentication service tests', () => {
         test("test should register sender and return success", async() => {
         const result = await authService.register(validData);
 
-        expect(result).toBeInstanceOf(ResponseDTO);
+        expect(result).toBeInstanceOf(AuthResponse);
+        expect(result.status).toBe(true);
         expect(validData.role).toBe("sender");
 
         const savedUser = await User.findOne({email: validData.email});
