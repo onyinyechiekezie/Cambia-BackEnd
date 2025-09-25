@@ -6,7 +6,7 @@ const Vendor = require('../models/Vendor');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { jwtSecret } = require("..comfig.env");
+const { jwtSecret } = require("../config/env");
 const RegisterValidator = require('../validators/registerValidator')
 const LoginValidator = require('../validators/loginValidator')
 
@@ -19,7 +19,7 @@ class AuthServiceImpl extends AuthService {
         const validated = RegisterValidator.validate(registerRequest)
 
         const existingUser = await User.findOne({ email: validated.email });
-        if (existingUser) throw new Error("Enail already exists");
+        if (existingUser) throw new Error("Email already exists");
         
         const id = uuidv4();
         const hashedPassword =  await bcrypt.hash(validated.hashedPassword, 10);

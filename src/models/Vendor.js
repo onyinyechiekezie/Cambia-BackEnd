@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
-const userSchema = require('./User').schema;
+const User = require('./User');
 
-const vendorSchema = new mongoose.Schema(userSchema.obj);
+const VendorSchema = new mongoose.Schema({
+//   vendorCode: { type: String, default: '' },
+});
 
-module.exports = mongoose.model('Sendor', vendorSchema);
+const Vendor = User.discriminator('vendor', VendorSchema);
+
+module.exports = Vendor;

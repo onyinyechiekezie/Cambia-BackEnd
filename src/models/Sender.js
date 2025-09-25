@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
-const userSchema = require('./User').schema;
+const User = require('./User');
 
-const senderSchema = new mongoose.Schema(userSchema.obj);
+const SenderSchema = new mongoose.Schema({
+//   senderLimit: { type: Number, default: 0 },
+});
 
-module.exports = mongoose.model('Sender', senderSchema);
+const Sender = User.discriminator('sender', SenderSchema);
+
+module.exports = Sender;

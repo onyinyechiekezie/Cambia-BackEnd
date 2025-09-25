@@ -1,16 +1,18 @@
-const Roles = require('./Roles');
+
 const mongoose = require('mongoose');
 
-const userSchema = new mongoose.Schema({
-    id: {type: String, unique: true},
-    email: { type: String, unique: true, lowercase: true, trim: true },
-    firstName: { type: String },
-    lastName: {type: String},
-    password: {type: String},
-    walletAddress: { type: String, unique: true, required: true, },
-    phone: {type: String, trim: true},
-    address: {type: String},
-    role: { type: String, enum: Object.values(Roles), default: Roles.SENDER, },
-}, { timestamps: true });
+const options = { discriminatorKey: 'role', timestamps: true };
 
-module.exports = mongoose.model('User', userSchema);
+const UserSchema = new mongoose.Schema({
+    firstName: { type: String, required: true },
+    lastName: { type: String, required: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    phone: { type: String, required: true },
+    password: {type: String},
+    walletAddress: { type: String, required: true, unique: true },
+    address: { type: String, required: true },
+}, options);
+
+const User = mongoose.model('User', UserSchema);
+
+module.exports = User;

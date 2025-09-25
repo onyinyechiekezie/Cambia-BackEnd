@@ -21,6 +21,27 @@ jest.mock('uuid', ()=> ({
 
 describe('Authentication service tests', () => {
     let authService;
+    const senderData = {
+            email: "123@example.com",
+            firstName: "Ibrahim",
+            lastName: "Doe",
+            password: "password",
+            walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            role: "sender",
+            phone: "07015366234",
+            address: "123 Main St, Lagos"
+    };
+
+    const vendorData = {
+            email: "123@example.com",
+            firstName: "Ibrahim",
+            lastName: "Doe",
+            password: "password",
+            walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            role: "sender",
+            phone: "07015366234",
+            address: "123 Main St, Lagos"
+    };
 
     beforeAll(async() => {
         process.env.NODE_ENV = 'test';
@@ -38,7 +59,6 @@ describe('Authentication service tests', () => {
         
         bcrypt.hash.mockResolvedValue('hashedPassword');
         bcrypt.compare.mockResolvedValue(true);
-        jwt.sign.mockReturnValue('mockToken')
         uuidv4.mockReturnValue('generated-uuid');
 
         await User.deleteMany({});
@@ -48,35 +68,38 @@ describe('Authentication service tests', () => {
     });
 
     describe("register user", () => {
-        const validData = {
-            email: "123#example.com",
-            firstName: "Ibrahim",
-            lastName: "Doe",
-            password: "password",
-            walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            role: "sender",
-            phone: "07015366234",
-            address: "123 Main St, Lagos"
-        }
-
+        
         test("test should register sender and return success", async() => {
-        const result = await authService.register(validData);
+        const result = await authService.register(senderData);
 
         expect(result).toBeInstanceOf(AuthResponse);
         expect(result.status).toBe(true);
         expect(validData.role).toBe("sender");
 
-        const savedUser = await User.findOne({email: validData.email});
+        const savedUser = await User.findOne({email: senderData.email});
         expect(savedUser).toBeTruthy();
         expect(savedUser.id).toBe("generated-uuid");
         expect(savedUser.role).toBe("sender");
 
-        const sender = await Sender.findOne({ email: validData.email})
+        const sender = await Sender.findOne({ email: senderData.email})
         expect(sender).toBeTruthy();
+    });
 
+        test("test should register vendor and return success", async() => {
+        const result = await authService.register(vendorData);
+
+        expect(result).toBeInstanceOf(AuthResponse);
+        expect(result.status).toBe(true);
+        expect(validData.role).toBe("vendor");
+
+        const savedUser = await User.findOne({email: senderData.email});
+        expect(savedUser).toBeTruthy();
+        expect(savedUser.id).toBe("generated-uuid");
+        expect(savedUser.role).toBe("v");
+
+        const sender = await Sender.findOne({ email: senderData.email})
+        expect(sender).toBeTruthy();
     });
     });
 
-    
-
-})
+});
