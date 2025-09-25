@@ -23,10 +23,9 @@ class AuthServiceImpl extends AuthService {
         const hashedPassword =  await bcrypt.hash(validated.password, 10);
         const userData = { ...validated, password: hashedPassword };
 
-        let user = await User.create(userData);
-        if(user.role === 'sender') {
+        if(userData.role === 'sender') {
             await Sender.create(userData);
-        } else if(user.role === "vendor") {
+        } else if(userData.role === "vendor") {
             await Vendor.create(userData);
         } else {
             throw new Error("Invalid role");

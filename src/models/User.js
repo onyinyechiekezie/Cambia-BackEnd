@@ -1,6 +1,7 @@
 
 const mongoose = require('mongoose');
-const Roles = require("./Roles")
+const Roles = require("./Roles");
+const { required } = require('joi');
 
 const options = { discriminatorKey: 'role', timestamps: true };
 
@@ -12,6 +13,7 @@ const UserSchema = new mongoose.Schema({
     password: {type: String},
     walletAddress: { type: String, required: true, unique: true },
     address: { type: String, required: true },
+    role: { type: String, enum: Object.values(Roles), required}
 }, options);
 
 const User = mongoose.model('User', UserSchema);

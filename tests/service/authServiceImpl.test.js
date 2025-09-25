@@ -22,7 +22,7 @@ jest.mock('uuid', ()=> ({
 describe('Authentication service tests', () => {
     let authService;
     const senderData = {
-            email: "123@example.com",
+            email: "1234@gmail.com",
             firstName: "Ibrahim",
             lastName: "Doe",
             password: "password",
@@ -33,7 +33,7 @@ describe('Authentication service tests', () => {
     };
 
     const vendorData = {
-            email: "bram@example.com",
+            email: "bramtech@gmail.com",
             firstName: "Adedeji",
             lastName: "Doe",
             password: "password",
@@ -61,9 +61,9 @@ describe('Authentication service tests', () => {
         bcrypt.compare.mockResolvedValue(true);
         uuidv4.mockReturnValue('generated-uuid');
 
-        await User.deleteMany({});
-        await Sender.deleteMany({});
-        await Vendor.deleteMany({});
+        await User.deleteMany({}).exec();
+        await Sender.deleteMany({}).exec();
+        await Vendor.deleteMany({}).exec();
     });
 
     describe("register user", () => {
@@ -73,14 +73,14 @@ describe('Authentication service tests', () => {
 
         expect(result).toBeInstanceOf(AuthResponse);
         expect(result.status).toBe(true);
-        expect(validData.role).toBe("sender");
+        expect(senderData.role).toBe("sender");
 
         const savedUser = await User.findOne({email: senderData.email});
         expect(savedUser).toBeTruthy();
         expect(savedUser.role).toBe("sender");
 
-        const sender = await Sender.findOne({ email: senderData.email})
-        expect(sender).toBeTruthy();
+        const savedSender = await Sender.findOne({ email: senderData.email})
+        expect(savedSender).toBeTruthy();
     });
 
         test("test should register vendor and return success", async() => {
@@ -88,14 +88,14 @@ describe('Authentication service tests', () => {
 
         expect(result).toBeInstanceOf(AuthResponse);
         expect(result.status).toBe(true);
-        expect(validData.role).toBe("vendor");
+        expect(vendorData.role).toBe("vendor");
 
         const savedUser = await User.findOne({email: vendorData.email});
         expect(savedUser).toBeTruthy();
         expect(savedUser.role).toBe("vendor");
 
-        const vendor = await vendor.findOne({ email: vendorData.email})
-        expect(vendor).toBeTruthy();
+        const savedVendor = await Vendor.findOne({ email: vendorData.email})
+        expect(savedVendor).toBeTruthy();
     });
     });
 
