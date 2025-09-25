@@ -117,7 +117,42 @@ describe('Authentication service tests', () => {
     
           await expect(authService.register(senderData)).rejects.toThrow('Email already exists');
         });
-
     });
+
+    describe("login user", ()=> {
+        test("test can login sender returns success and token ", async ()=> {
+            const hashedPassword = await bcrypt.hash(senderData.password, 10);
+            await Sender.create({ ...senderData, password: hashedPassword });
+
+            const result = await authService.login({
+                email: senderData.email,
+                password: senderData.password
+            });
+
+            expect(result).toHaveProperty("token");
+            expect(typeof result.token).toBe("string");
+
+            expect(result.user).toBeInstanceOf(AuthResponse);
+            expect(result.user.status).toBe(true);
+            expect(result.user.message).toBe("Login successful")
+        });
+
+        test("test can login sender returns success and token", async()=>{
+            const hashedPassword = await bcrypt.hash(vendorData.password, 10);
+            await Sender.create({ ...vendorData, password: hashedPassword });
+
+            const result = await authService.login({
+                email: vendorData.email,
+                password: vendorData.password
+            });
+
+            expect(result).toHaveProperty("token");
+            expect(typeof result.token).toBe("string");
+
+            expect(result.user).toBeInstanceOf(AuthResponse);
+            expect(result.user.status).toBe(true);
+            expect(result.user.message).toBe("Login successful") 
+        })
+    })
 
 });

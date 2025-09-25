@@ -5,7 +5,7 @@ const Sender = require('../models/Sender');
 const Vendor = require('../models/Vendor');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { jwtSecret } = require("../config/env");
+const { jwtSecret, jwtExpiresIn } = require("../config/env");
 const RegisterValidator = require('../validators/registerValidator')
 const LoginValidator = require('../validators/loginValidator')
 
@@ -46,7 +46,7 @@ class AuthServiceImpl extends AuthService {
         const token = jwt.sign(
             { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
             jwtSecret,
-            { expiredIn: "1h"}
+            { expiresIn: jwtExpiresIn }
         );
         return { token, user: new AuthResponse("Login successful", true) }
     }
