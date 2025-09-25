@@ -21,3 +21,5 @@ class SenderService {
         throw new Error("Method not implemented")
     }
 }
+
+module.exports = SenderService;

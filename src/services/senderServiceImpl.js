@@ -1,0 +1,3 @@
+class SenderServiceImpl extends SenderService{
+
+}
