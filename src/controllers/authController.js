@@ -1,4 +1,4 @@
-const AuthServiceImpl = require('../services/authServicesImpl');
+const AuthServiceImpl = require('../services/authServiceImpl');
 
 class AuthController {
   constructor() {
@@ -18,6 +18,7 @@ class AuthController {
   login = async (req, res)=> {
     try {
       const result = await this.authService.login(req.body);
+      res.setHeader("Authorization", `Bearer ${result.token}`);
       return res.status(200).json(result);
     } catch (error) {
       console.error("Login error: ", error.message);
