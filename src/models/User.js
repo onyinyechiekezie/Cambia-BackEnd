@@ -1,5 +1,6 @@
 
 const mongoose = require('mongoose');
+const Roles = require("./Roles")
 
 const options = { discriminatorKey: 'role', timestamps: true };
 

@@ -38,7 +38,7 @@ describe('Authentication service tests', () => {
             lastName: "Doe",
             password: "password",
             walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            role: "receiver",
+            role: "vendor",
             phone: "08015366234",
             address: "123 Main St, Lagos"
     };
@@ -64,7 +64,6 @@ describe('Authentication service tests', () => {
         await User.deleteMany({});
         await Sender.deleteMany({});
         await Vendor.deleteMany({});
-        // jest.spyOn(User, 'findOne');
     });
 
     describe("register user", () => {
@@ -78,7 +77,6 @@ describe('Authentication service tests', () => {
 
         const savedUser = await User.findOne({email: senderData.email});
         expect(savedUser).toBeTruthy();
-        expect(savedUser.id).toBe("generated-uuid");
         expect(savedUser.role).toBe("sender");
 
         const sender = await Sender.findOne({ email: senderData.email})
@@ -92,13 +90,12 @@ describe('Authentication service tests', () => {
         expect(result.status).toBe(true);
         expect(validData.role).toBe("vendor");
 
-        const savedUser = await User.findOne({email: senderData.email});
+        const savedUser = await User.findOne({email: vendorData.email});
         expect(savedUser).toBeTruthy();
-        expect(savedUser.id).toBe("generated-uuid");
-        expect(savedUser.role).toBe("v");
+        expect(savedUser.role).toBe("vendor");
 
-        const sender = await Sender.findOne({ email: senderData.email})
-        expect(sender).toBeTruthy();
+        const vendor = await vendor.findOne({ email: vendorData.email})
+        expect(vendor).toBeTruthy();
     });
     });
 
