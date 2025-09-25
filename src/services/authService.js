@@ -5,11 +5,11 @@ class AuthService {
             throw new Error("Cannot instantiate abstract class AuthService directly");
         }
     }
-    async register(userData) {
+    async register(registerRequest) {
         throw new Error("Method not implemented.");
     };
 
-    async login(userCredentials) {
+    async login(loginRequest) {
         throw new Error("Method not implemented.");
     }
 }
