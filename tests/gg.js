@@ -1,44 +1,59 @@
-// AuthServiceImpl.js
+// src/services/authServiceImpl.js
+const AuthService = require('./authService');
+const RegisterRequestDTO = require('../dto/req/register.dto');
+const LoginRequestDTO = require('../dto/req/login.dto');
+const AuthResponseDTO = require('../dto/res/auth.dto');
+const User = require('../models/User');
+const Sender = require('../models/Sender');
+const Vendor = require('../models/Vendor');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const { jwtSecret } = require('../config/env');
+
 class AuthServiceImpl extends AuthService {
-  constructor(userRepository, jwtService) {
+  constructor() {
     super();
-    this.userRepository = userRepository; // abstraction
-    this.jwtService = jwtService;
   }
 
   async register(authData) {
     const validated = RegisterRequestDTO.validate(authData);
-    const user = await this.userRepository.createUser(validated);
+
+    const existing = await User.findOne({ email: validated.email });
+    if (existing) throw new Error('Email already exists');
+
+    const id = uuidv4();
+    const hashedPassword = await bcrypt.hash(validated.password, 10);
+
+    const userData = { id, ...validated, password: hashedPassword };
+
+    // Save to central users collection
+    const user = await User.create(userData);
+
+    // Save to role-specific collection
+    if (user.role === 'sender') await Sender.create(userData);
+    else if (user.role === 'vendor') await Vendor.create(userData);
+
     return AuthResponseDTO.fromUserData(user);
   }
 
   async login(authData) {
     const validated = LoginRequestDTO.validate(authData);
-    const user = await this.userRepository.findByEmail(validated.email);
-    const validPassword = await bcrypt.compare(validated.password, user.password);
-    if (!validPassword) throw new Error('Invalid credentials');
-    const token = this.jwtService.sign({ id: user.id, email: user.email });
+
+    const user = await User.findOne({ email: validated.email });
+    if (!user) throw new Error('Invalid email or password');
+
+    const isPasswordValid = await bcrypt.compare(validated.password, user.password);
+    if (!isPasswordValid) throw new Error('Invalid email or password');
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+
     return { token, user: AuthResponseDTO.fromUserData(user) };
   }
 }
 
-// BlockchainService.js
-class BlockchainService {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async registerUserOnChain(user) {
-    const tx = new TransactionBlock();
-    tx.moveCall({
-      target: `${suiContractAddress}::DiasporaRemittance::store_user`,
-      arguments: [
-        tx.pure(user.id),
-        tx.pure(user.email),
-        tx.pure(user.walletAddress),
-        tx.pure(user.role),
-      ],
-    });
-    return this.client.signAndExecuteTransactionBlock({ transactionBlock: tx });
-  }
-}
+module.exports = AuthServiceImpl;

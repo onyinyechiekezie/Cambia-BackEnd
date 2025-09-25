@@ -1,8 +1,8 @@
-class UserRegisterRes {
+class AuthResponse {
     constructor(message, status) {
         this.message = message;
         this.status = Boolean(status);
     }
 }
 
-module.exports = UserRegisterRes;
+module.exports = AuthResponse;

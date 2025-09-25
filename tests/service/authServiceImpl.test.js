@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid')
 const mongoose = require('mongoose');
 const connectDB = require('../../src/config/db');
-const ResponseDTO = require('../../src/dtos/response/userRegisterRes.js');
+const ResponseDTO = require('../../src/dtos/response/AuthResponse.js');
 
 jest.mock("bcrypt", ()=> ({
     hash: jest.fn(),
