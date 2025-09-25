@@ -103,6 +103,24 @@ describe('VendorServiceImpl (real MongoDB)', () => {
     expect(products[0].vendor.toString()).toBe(vendor._id.toString());
   });
 
+  test('should delete product owned by vendor', async () => {
+    const product = await Product.create({
+      name: 'Delete Product',
+      description: 'delete test',
+      price: 30,
+      quantityAvailable: 3,
+      unit: 'pcs',
+      vendor: vendor._id,
+    });
+
+    const deleted = await vendorService.deleteProduct(vendor._id, product._id);
+    expect(deleted._id.toString()).toBe(product._id.toString());
+
+    const found = await Product.findById(product._id);
+    expect(found).toBeNull();
+  });
+
+
 
 
 
