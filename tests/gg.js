@@ -15,7 +15,7 @@ class AuthServiceImpl extends AuthService {
     super();
   }
 
-  async register(authData) {
+  async register(re) {
     const validated = RegisterValidator.validate(authData);
 
     const existing = await User.findOne({ email: validated.email });

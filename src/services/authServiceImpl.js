@@ -7,7 +7,7 @@ class AuthServiceImpl extends AuthService {
         super();
     }
 
-    async register(authData) {
+    async register(registerRequest) {
         const validated = RegisterRequest.validate(authData)
     }
 
