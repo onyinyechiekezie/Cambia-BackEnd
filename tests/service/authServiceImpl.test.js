@@ -38,6 +38,7 @@ describe('Authentication service tests', () => {
         
         bcrypt.hash.mockResolvedValue('hashedPassword');
         bcrypt.compare.mockResolvedValue(true);
+        jwt.sign.mockReturnValue('mockToken')
         uuidv4.mockReturnValue('generated-uuid');
 
         await User.deleteMany({});
@@ -69,7 +70,9 @@ describe('Authentication service tests', () => {
         expect(savedUser).toBeTruthy();
         expect(savedUser.id).toBe("generated-uuid");
         expect(savedUser.role).toBe("sender");
-       
+
+        const sender = await Sender.findOne({ email: validData.email})
+        expect(sender).toBeTruthy();
 
     });
     });

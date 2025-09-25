@@ -30,7 +30,7 @@ class AuthServiceImpl extends AuthService {
         if(user.role === 'sender') await Sender.create(userData);
         else if(user.role == "vendor") await Vendor.create(user);
 
-        return new AuthResponse("User registered succesfully", true)
+        return new AuthResponse("User registered successfully", true)
     }
 
     async login(loginRequest) {
@@ -48,6 +48,14 @@ class AuthServiceImpl extends AuthService {
             { expiredIn: "1h"}
         );
         return { token, user: new AuthResponse("Login successful", true) }
+    }
+
+    verifyToken(token) {
+        try {
+            return jwt.verify(token, jwtSecret);
+        } catch(error) {
+            throw new Error("Invalid or expired");
+        }
     }
 }
 
