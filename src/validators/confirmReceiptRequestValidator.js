@@ -1,4 +1,3 @@
-```javascript
 const Joi = require('joi');
 
 class ConfirmReceiptRequestValidator {
@@ -15,4 +14,3 @@ class ConfirmReceiptRequestValidator {
 }
 
 module.exports = ConfirmReceiptRequestValidator;
-```
