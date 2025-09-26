@@ -1,0 +1,6 @@
+[package]
+name = "TrustlessSwap"
+edition = "2024.beta"
+
+[addresses]
+trustless_swap = "0x0"
