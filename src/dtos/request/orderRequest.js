@@ -1,11 +1,8 @@
 class OrderRequest {
-    constructor(vendorID, products, quantity, trustlessSwapID) {
-        this.vendorID = vendorID;
-        this.products = products;   
-        this.quantity = quantity;      
-        this.trustlessSwapID = trustlessSwapID;
-    }
+  constructor(products, trustlessSwapID) {
+    this.products = products; // Array of { productId, quantity }
+    this.trustlessSwapID = trustlessSwapID; // Optional
+  }
 }
 
 module.exports = OrderRequest;
-
