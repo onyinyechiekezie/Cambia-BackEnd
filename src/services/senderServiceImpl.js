@@ -1,94 +1,180 @@
-const BlockchainServiceMock = require("./blockChainServiceMock");
-const SenderService = require("./senderService");
-const Order = require("../models/Order"); // MongoDB Order model
-const { v4: uuidv4 } = require("uuid");
-class SenderServiceImpl extends SenderService{
-    constructor() {
-        super();
-        this.blockChainService = new BlockchainServiceMock();
-    }
+const SenderService = require('./SenderService');
+const Order = require('../models/Order');
+const Product = require('../models/Product');
+const User = require('../models/User');
+const Roles = require('../models/Roles');
+const Status = require('../models/OrderStatus');
+const OrderRequestValidator = require('../../validator/OrderRequestValidator');
+const FundOrderRequestValidator = require('../../validator/FundOrderRequestValidator');
+const ConfirmReceiptRequestValidator = require('../../validator/ConfirmReceiptRequestValidator');
+const CancelOrderRequestValidator = require('../../validator/CancelOrderRequestValidator');
+const TrackOrderRequestValidator = require('../../validator/TrackOrderRequestValidator');
+const SuiEscrowService = require('./SuiEscrowService');
+const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
-    async placeOrder(orderRequest) {
-        // Strict DTO validation
-        if (typeof orderRequest !== 'object' || orderRequest === null) {
-            throw new Error('Order request must be an object');
-        }
-        const requiredFields = ['senderId', 'receiverName', 'receiverWallet', 'amount', 'products'];
-        for (const field of requiredFields) {
-            if (!(field in orderRequest)) {
-                throw new Error(`Missing required field: ${field}`);
-            }
-        }
-        const { senderId, receiverName, receiverWallet, amount, currency, products } = orderRequest;
+class SenderServiceImpl extends SenderService {
+  constructor() {
+    super();
+    this.suiEscrowService = new SuiEscrowService();
+  }
 
-        if (typeof senderId !== 'string' || senderId.trim() === '') {
-            throw new Error('senderId must be a non-empty string');
-        }
-        if (typeof receiverName !== 'string' || receiverName.trim() === '') {
-            throw new Error('receiverName must be a non-empty string');
-        }
-        if (typeof receiverWallet !== 'string' || receiverWallet.trim() === '') {
-            throw new Error('receiverWallet must be a non-empty string');
-        }
-        if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
-            throw new Error('amount must be a positive number');
-        }
-        if (!Array.isArray(products) || products.length === 0) {
-            throw new Error('products must be a non-empty array');
-        }
+  async placeOrder(orderRequest, senderId) {
+    // Validate request
+    const validatedRequest = OrderRequestValidator.validate(orderRequest);
 
-        return await Order.create({
-            orderId: uuidv4(),
-            senderId,
-            receiverName,
-            receiverWallet,
-            amount,
-            currency: typeof currency === 'string' && currency.trim() ? currency : 'SUI',
-            products,
-            status: 'pending',
-            funded: false,
-        });
-    }
+    // Fetch sender
+    const sender = await User.findById(senderId);
+    if (!sender || sender.role !== Roles.SENDER) throw new Error('Invalid sender');
 
-    async fundOrder(fundRequest) {
-        const { orderID, amount, walletAddress} = fundRequest;
+    // Fetch products to calculate totalPrice and derive vendorID
+    let totalPrice = 0;
+    let vendorID = null;
+    const products = [];
 
-        const order = await Order.findOne({ orderId });
-            if (!order) throw new Error("Order not found");
-            if (order.funded) throw new Error("Order already funded");
-        
-            // call mocked blockchain service
-            const tx = await this.blockchainService.fundOrderTx(orderId, amount, walletAddress);
-        
-            order.funded = true;
-            order.status = "funded";
-            order.txHash = tx.txHash;
-            await order.save();
-        
-            return { order, tx };
-    }
+    for (const item of validatedRequest.products) {
+      const product = await Product.findById(item.productId);
+      if (!product) throw new Error(`Product ${item.productId} not found`);
+      if (product.quantityAvailable < item.quantity) throw new Error(`Insufficient stock for product ${item.productId}`);
 
-    async trackOrder(trackRequest) {
-        const { orderId } = trackRequest;
-    
-        const order = await Order.findOne({ orderId });
-        if (!order) throw new Error("Order not found");
-    
-        return order;
+      if (!vendorID) {
+        vendorID = product.vendor;
+      } else if (vendorID.toString() !== product.vendor.toString()) {
+        throw new Error('All products must be from the same vendor');
       }
-    
-      async confirmReceipt(confirmRequest) {
-        const { orderId } = confirmRequest;
-    
-        const order = await Order.findOne({ orderId });
-        if (!order) throw new Error("Order not found");
-        if (order.status !== "funded") throw new Error("Order not yet funded");
-    
-        order.status = "completed";
-        await order.save();
-    
-        return order;
+
+      totalPrice += product.price * item.quantity;
+      products.push({ productID: product._id, quantity: item.quantity });
+
+      // Update stock
+      product.quantityAvailable -= item.quantity;
+      await product.save();
+    }
+
+    // Verify vendor
+    const vendor = await User.findById(vendorID);
+    if (!vendor || vendor.role !== Roles.VENDOR) throw new Error('Invalid vendor');
+
+    // Generate unlock key
+    const unlockKey = Math.random().toString(36).substring(2, 15);
+
+    // Create order
+    const order = new Order({
+      senderID,
+      vendorID,
+      products,
+      totalPrice,
+      status: Status.PENDING,
+      trustlessSwapID: validatedRequest.trustlessSwapID,
+      unlockKey,
+      verifierAddress: process.env.VERIFIER_ADDRESS || '0xSOME_VERIFIER_ADDRESS',
+    });
+
+    await order.save();
+    return order;
+  }
+
+  async fundOrder(fundRequest, senderId) {
+    const validatedRequest = FundOrderRequestValidator.validate(fundRequest);
+    const { orderId, amount, senderWalletPrivateKey } = validatedRequest;
+
+    const order = await Order.findById(orderId).populate('vendorID');
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+    if (order.status !== Status.PENDING) throw new Error('Order not in pending state');
+    if (order.totalPrice !== amount) throw new Error('Amount does not match order total');
+
+    const sender = await User.findById(senderId);
+    if (!sender) throw new Error('Sender not found');
+
+    // Create escrow
+    const senderKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(senderWalletPrivateKey, 'hex'));
+    const trustlessSwapID = await this.suiEscrowService.createEscrow(
+      senderKeypair,
+      sender.walletAddress,
+      order.vendorID.walletAddress,
+      order.verifierAddress,
+      amount,
+      order.unlockKey
+    );
+
+    order.trustlessSwapID = trustlessSwapID;
+    order.status = Status.RECEIVED;
+    await order.save();
+
+    return order;
+  }
+
+  async trackOrder(trackRequest, senderId) {
+    const validatedRequest = TrackOrderRequestValidator.validate(trackRequest);
+    const { orderId } = validatedRequest;
+
+    const order = await Order.findById(orderId).populate('products.productID vendorID');
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+
+    return order;
+  }
+
+  async confirmReceipt(confirmRequest, senderId) {
+    const validatedRequest = ConfirmReceiptRequestValidator.validate(confirmRequest);
+    const { orderId, unlockKey } = validatedRequest;
+
+    const order = await Order.findById(orderId).populate('vendorID');
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+    if (order.status !== Status.PROOF_UPLOADED) throw new Error('Proof not uploaded');
+    if (order.unlockKey !== unlockKey) throw new Error('Invalid unlock key');
+
+    // Assuming sender acts as verifier for simplicity
+    const verifierKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(process.env.VERIFIER_PRIVATE_KEY, 'hex')); // Replace with actual key
+    const txDigest = await this.suiEscrowService.verifyAndRelease(
+      verifierKeypair,
+      order.verifierAddress,
+      order.trustlessSwapID,
+      order.unlockKey,
+      order.totalPrice
+    );
+
+    order.status = Status.DELIVERED;
+    await order.save();
+    return { order, txDigest };
+  }
+
+  async cancelOrder(cancelRequest, senderId) {
+    const validatedRequest = CancelOrderRequestValidator.validate(cancelRequest);
+    const { orderId, senderWalletPrivateKey } = validatedRequest;
+
+    const order = await Order.findById(orderId);
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+    if (order.status !== Status.PENDING && order.status !== Status.RECEIVED) {
+      throw new Error('Cannot cancel order in this state');
+    }
+
+    const sender = await User.findById(senderId);
+    if (!sender) throw new Error('Sender not found');
+
+    // Cancel escrow
+    const senderKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(senderWalletPrivateKey, 'hex'));
+    const txDigest = await this.suiEscrowService.cancelEscrow(
+      senderKeypair,
+      sender.walletAddress,
+      order.trustlessSwapID
+    );
+
+    // Refund stock
+    for (const item of order.products) {
+      const product = await Product.findById(item.productID);
+      if (product) {
+        product.quantityAvailable += item.quantity;
+        await product.save();
       }
-        
+    }
+
+    order.status = Status.CANCELLED;
+    await order.save();
+    return { order, txDigest };
+  }
 }
-    module.exports = SenderServiceImpl;
+
+module.exports = ConcreteSenderService;
