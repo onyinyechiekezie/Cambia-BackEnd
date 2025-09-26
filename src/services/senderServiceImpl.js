@@ -3,7 +3,7 @@ const BlockchainServicMock = require("./blockChainServiceMock");
 class SenderServiceImpl extends SenderService{
     constructor() {
         super();
-        this.blockChainService = new BlockchainService
+        this.blockChainService = new BlockchainServiceMock();
     }
 
     async placeOrder(orderRequest){
