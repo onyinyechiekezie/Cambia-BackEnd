@@ -1,4 +1,4 @@
-const SenderService = require('./senderService');
+const SenderService = require('./SenderService');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -9,7 +9,7 @@ const FundOrderRequestValidator = require('../../validator/FundOrderRequestValid
 const ConfirmReceiptRequestValidator = require('../../validator/ConfirmReceiptRequestValidator');
 const CancelOrderRequestValidator = require('../../validator/CancelOrderRequestValidator');
 const TrackOrderRequestValidator = require('../../validator/TrackOrderRequestValidator');
-const SuiEscrowService = require('./suiEscrowService');
+const SuiEscrowService = require('./SuiEscrowService');
 const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
 class SenderServiceImpl extends SenderService {
@@ -19,14 +19,11 @@ class SenderServiceImpl extends SenderService {
   }
 
   async placeOrder(orderRequest, senderId) {
-    // Validate request
     const validatedRequest = OrderRequestValidator.validate(orderRequest);
 
-    // Fetch sender
     const sender = await User.findById(senderId);
     if (!sender || sender.role !== Roles.SENDER) throw new Error('Invalid sender');
 
-    // Fetch products to calculate totalPrice and derive vendorID
     let totalPrice = 0;
     let vendorID = null;
     const products = [];
@@ -45,19 +42,15 @@ class SenderServiceImpl extends SenderService {
       totalPrice += product.price * item.quantity;
       products.push({ productID: product._id, quantity: item.quantity });
 
-      // Update stock
       product.quantityAvailable -= item.quantity;
       await product.save();
     }
 
-    // Verify vendor
     const vendor = await User.findById(vendorID);
     if (!vendor || vendor.role !== Roles.VENDOR) throw new Error('Invalid vendor');
 
-    // Generate unlock key
     const unlockKey = Math.random().toString(36).substring(2, 15);
 
-    // Create order
     const order = new Order({
       senderID,
       vendorID,
@@ -86,7 +79,6 @@ class SenderServiceImpl extends SenderService {
     const sender = await User.findById(senderId);
     if (!sender) throw new Error('Sender not found');
 
-    // Create escrow
     const senderKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(senderWalletPrivateKey, 'hex'));
     const trustlessSwapID = await this.suiEscrowService.createEscrow(
       senderKeypair,
@@ -125,8 +117,7 @@ class SenderServiceImpl extends SenderService {
     if (order.status !== Status.PROOF_UPLOADED) throw new Error('Proof not uploaded');
     if (order.unlockKey !== unlockKey) throw new Error('Invalid unlock key');
 
-    // Assuming sender acts as verifier for simplicity
-    const verifierKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(process.env.VERIFIER_PRIVATE_KEY, 'hex')); // Replace with actual key
+    const verifierKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(process.env.VERIFIER_PRIVATE_KEY, 'hex'));
     const txDigest = await this.suiEscrowService.verifyAndRelease(
       verifierKeypair,
       order.verifierAddress,
@@ -154,7 +145,6 @@ class SenderServiceImpl extends SenderService {
     const sender = await User.findById(senderId);
     if (!sender) throw new Error('Sender not found');
 
-    // Cancel escrow
     const senderKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(senderWalletPrivateKey, 'hex'));
     const txDigest = await this.suiEscrowService.cancelEscrow(
       senderKeypair,
@@ -162,7 +152,6 @@ class SenderServiceImpl extends SenderService {
       order.trustlessSwapID
     );
 
-    // Refund stock
     for (const item of order.products) {
       const product = await Product.findById(item.productID);
       if (product) {

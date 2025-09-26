@@ -1,4 +1,3 @@
-```javascript
 const express = require('express');
 const router = express.Router();
 const SenderController = require('../controllers/SenderController');
@@ -14,4 +13,3 @@ router.post('/:orderId/confirm', authMiddleware(Roles.SENDER), senderController.
 router.post('/:orderId/cancel', authMiddleware(Roles.SENDER), senderController.cancelOrder.bind(senderController));
 
 module.exports = router;
-```
