@@ -1,12 +1,21 @@
 
+const { required } = require('joi');
 const mongoose = require('mongoose');
 
 const OrderSchema = new mongoose.Schema({
-  sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
-  totalAmount: { type: Number, default: 0 },
-  status: { type: String, default: 'pending' }, // pending -> acknowledged -> prepared -> proof_uploaded -> shipped -> delivered
-  proofOfPackaging: { type: String }, // URL or path
+  orderID: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  senderID: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  vendorID: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
+  products: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true},  
+  quantity: { type: Number, required: true },
+  totalPrice: { type: Number, default: 0 },
+  status: { 
+    type: String, 
+    enum: ['pending', 'received', 'prepared', 'proof_uploaded', 'shipped', 'delivered'],
+    default: 'pending'
+  },
+  trustlessSwapID: { type: String }, // for linking blockchain transaction
+  proofOfPackaging: { type: String }, // extra: matches your code
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', OrderSchema);

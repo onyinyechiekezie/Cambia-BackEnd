@@ -118,7 +118,47 @@ describe('VendorServiceImpl (real MongoDB)', () => {
 
     const found = await Product.findById(product._id);
     expect(found).toBeNull();
+
+    
   });
+
+  test('should receive (acknowledge) an order', async () => {
+    const order = await Order.create({
+      vendor: vendor._id,
+      totalAmount: 500,
+      status: 'pending',
+    });
+
+    const updated = await vendorService.receiveOrder(vendor._id, order._id);
+    expect(updated.status).toBe('RECEIVED');
+  }); 
+
+  test('should prepare goods for an order', async () => {
+    const order = await Order.create({
+      vendor: vendor._id,
+      totalAmount: 400,
+      status: 'pending',
+    });
+
+    const updated = await vendorService.prepareGoods(vendor._id, order._id);
+    expect(updated.status).toBe('PREPARING');
+
+  });
+
+  test('should upload proof for an order', async () => {
+    const order = await Order.create({
+      vendor: vendor._id,
+      totalAmount: 250,
+      status: 'pending',
+    });
+
+    const proofUrl = 'https://example.com/proof.jpg';
+    const updated = await vendorService.uploadProof(vendor._id, order._id, proofUrl);
+    expect(updated.proofOfPackaging).toBe(proofUrl);
+    expect(updated.status).toBe('PACKAGED');
+
+  });
+
 
 
 
