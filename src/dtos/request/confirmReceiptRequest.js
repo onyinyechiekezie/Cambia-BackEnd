@@ -1,4 +1,3 @@
-```javascript
 class ConfirmReceiptRequest {
   constructor(orderId, unlockKey) {
     this.orderId = orderId;
@@ -7,4 +6,3 @@ class ConfirmReceiptRequest {
 }
 
 module.exports = ConfirmReceiptRequest;
-```
