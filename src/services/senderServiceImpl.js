@@ -8,11 +8,33 @@ class SenderServiceImpl extends SenderService{
         this.blockChainService = new BlockchainServiceMock();
     }
 
-    async placeOrder(orderRequest){
+    async placeOrder(orderRequest) {
+        // Strict DTO validation
+        if (typeof orderRequest !== 'object' || orderRequest === null) {
+            throw new Error('Order request must be an object');
+        }
+        const requiredFields = ['senderId', 'receiverName', 'receiverWallet', 'amount', 'products'];
+        for (const field of requiredFields) {
+            if (!(field in orderRequest)) {
+                throw new Error(`Missing required field: ${field}`);
+            }
+        }
         const { senderId, receiverName, receiverWallet, amount, currency, products } = orderRequest;
 
-        if (!senderId || !receiverName || !receiverWallet || !amount || !products || products.length === 0) {
-            throw new Error("Missing required fields or products");
+        if (typeof senderId !== 'string' || senderId.trim() === '') {
+            throw new Error('senderId must be a non-empty string');
+        }
+        if (typeof receiverName !== 'string' || receiverName.trim() === '') {
+            throw new Error('receiverName must be a non-empty string');
+        }
+        if (typeof receiverWallet !== 'string' || receiverWallet.trim() === '') {
+            throw new Error('receiverWallet must be a non-empty string');
+        }
+        if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
+            throw new Error('amount must be a positive number');
+        }
+        if (!Array.isArray(products) || products.length === 0) {
+            throw new Error('products must be a non-empty array');
         }
 
         return await Order.create({
@@ -21,9 +43,9 @@ class SenderServiceImpl extends SenderService{
             receiverName,
             receiverWallet,
             amount,
-            currency: currency || "SUI",
+            currency: typeof currency === 'string' && currency.trim() ? currency : 'SUI',
             products,
-            status: "pending",
+            status: 'pending',
             funded: false,
         });
     }
