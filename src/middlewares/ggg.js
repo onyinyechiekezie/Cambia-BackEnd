@@ -77,13 +77,6 @@ describe("SenderServiceImpl tests", () => {
   });
 });
 
-class BlockchainService {
-  async fundOrderTx(orderId, amount, walletAddress) {
-    throw new Error("Method not implemented");
-  }
-}
-
-module.exports = BlockchainService;
 
 
 const BlockchainService = require("./blockchainService");
