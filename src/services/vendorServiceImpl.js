@@ -25,31 +25,35 @@ class VendorServiceImpl extends VendorService {
     return await ProductService.deleteProduct(productId, vendorId);
   }
 
+
   async getVendorProducts(vendorId) {
     return await ProductService.getVendorProducts(vendorId);
   }
 
-  async receiveOrder(vendorId, orderId) {
-    const order = await Order.findOne({ _id: orderId, vendor: vendorId });
-    if (!order) throw new Error("Order not found or not assigned to vendor");
-    order.status = 'RECEIVED';
-    return await order.save();
-  }
+  // vendorServiceImpl.js
 
-  async prepareGoods(vendorId, orderId) {
-    const order = await Order.findOne({ _id: orderId, vendor: vendorId });
-    if (!order) throw new Error("Order not found or not assigned to vendor");
-    order.status = 'PREPARING';
-    return await order.save();
-  }
+async receiveOrder(vendorId, orderId) {
+  const order = await Order.findOne({ _id: orderId, vendorID: vendorId });
+  if (!order) throw new Error("Order not found or not assigned to vendor");
+  order.status = 'received'; // ✅ matches schema
+  return await order.save();
+}
 
-  async uploadProof(vendorId, orderId, proofUrl) {
-    const order = await Order.findOne({ _id: orderId, vendor: vendorId });
-    if (!order) throw new Error("Order not found or not assigned to vendor");
-    order.proofOfPackaging = proofUrl;
-    order.status = 'PACKAGED';
-    return await order.save();
-  }
+async prepareGoods(vendorId, orderId) {
+  const order = await Order.findOne({ _id: orderId, vendorID: vendorId });
+  if (!order) throw new Error("Order not found or not assigned to vendor");
+  order.status = 'prepared'; // ✅ matches schema
+  return await order.save();
+}
+
+async uploadProof(vendorId, orderId, proofUrl) {
+  const order = await Order.findOne({ _id: orderId, vendorID: vendorId });
+  if (!order) throw new Error("Order not found or not assigned to vendor");
+  order.proofOfPackaging = proofUrl;
+  order.status = 'proof_uploaded'; // ✅ matches schema
+  return await order.save();
+}
+
 }
 
 module.exports = new VendorServiceImpl();

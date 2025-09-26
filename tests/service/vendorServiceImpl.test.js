@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 
 const Vendor = require('../../src/models/Vendor');
+const Sender = require('../../src/models/Sender');
 const Product = require('../../src/models/Product');
 const Order = require('../../src/models/Order');
 const vendorService = require('../../src/services/vendorServiceImpl');
@@ -29,19 +30,42 @@ afterEach(async () => {
 });
 
 describe('VendorServiceImpl (real MongoDB)', () => {
-  let vendor;
+  let vendor, sender, product;
 
-  beforeEach(async () => {
-    // create a fresh vendor before each test with a unique walletAddress/email
-    vendor = await Vendor.create({
-      firstName: 'Test',
-      lastName: 'Vendor',
-      email: `vendor+${Date.now()}@example.com`,
-      phone: '0800000000',
-      walletAddress: '0x' + crypto.randomBytes(32).toString('hex'),
-      address: '123 Test St',
-    });
+beforeEach(async () => {
+  // create vendor
+  vendor = await Vendor.create({
+    firstName: 'Test',
+    lastName: 'Vendor',
+    email: `vendor+${Date.now()}@example.com`,
+    phone: '0800000000',
+    walletAddress: '0x' + crypto.randomBytes(32).toString('hex'),
+    address: '123 Test St',
+    // role: 'vendor',
   });
+
+  // create sender
+  sender = await Sender.create({
+    firstName: 'Test',
+    lastName: 'Sender',
+    email: `sender+${Date.now()}@example.com`,
+    phone: '0811111111',
+    walletAddress: '0x' + crypto.randomBytes(32).toString('hex'),
+    address: '456 Sender St',
+    // role: 'sender',
+  });
+
+  // create product
+//   product = await Product.create({
+//     name: 'Order Product',
+//     description: 'for order tests',
+//     price: 100,
+//     quantityAvailable: 5,
+//     unit: 'pcs',
+//     vendor: vendor._id,
+//   });
+});
+
 
   test('should add a product for vendor', async () => {
     const productData = {
@@ -123,41 +147,79 @@ describe('VendorServiceImpl (real MongoDB)', () => {
   });
 
   test('should receive (acknowledge) an order', async () => {
-    const order = await Order.create({
-      vendor: vendor._id,
-      totalAmount: 500,
-      status: 'pending',
-    });
-
-    const updated = await vendorService.receiveOrder(vendor._id, order._id);
-    expect(updated.status).toBe('RECEIVED');
-  }); 
-
-  test('should prepare goods for an order', async () => {
-    const order = await Order.create({
-      vendor: vendor._id,
-      totalAmount: 400,
-      status: 'pending',
-    });
-
-    const updated = await vendorService.prepareGoods(vendor._id, order._id);
-    expect(updated.status).toBe('PREPARING');
-
+  const product = await Product.create({
+    name: 'Order Product',
+    description: 'for order tests',
+    price: 100,
+    quantityAvailable: 5,
+    unit: 'pcs',
+    vendor: vendor._id,
   });
 
-  test('should upload proof for an order', async () => {
-    const order = await Order.create({
-      vendor: vendor._id,
-      totalAmount: 250,
-      status: 'pending',
-    });
-
-    const proofUrl = 'https://example.com/proof.jpg';
-    const updated = await vendorService.uploadProof(vendor._id, order._id, proofUrl);
-    expect(updated.proofOfPackaging).toBe(proofUrl);
-    expect(updated.status).toBe('PACKAGED');
-
+  const order = await Order.create({
+    senderID: sender._id,
+    vendorID: vendor._id,
+    products: [product._id],
+    quantity: 2,
+    totalPrice: 200,
+    status: 'pending',
   });
+
+  const updated = await vendorService.receiveOrder(vendor._id, order._id);
+  expect(updated.status).toBe('received'); // ✅ matches enum
+});
+
+
+test('should prepare goods for an order', async () => {
+  const product = await Product.create({
+    name: 'Prepare Product',
+    description: 'prepare test',
+    price: 100,
+    quantityAvailable: 5,
+    unit: 'pcs',
+    vendor: vendor._id,
+  });
+
+  const order = await Order.create({
+    senderID: sender._id,
+    vendorID: vendor._id,
+    products: [product._id],
+    quantity: 1,
+    totalPrice: 100,
+    status: 'pending',
+  });
+
+  const updated = await vendorService.prepareGoods(vendor._id, order._id);
+  expect(updated.status).toBe('prepared'); // ✅ matches enum
+});
+
+
+test('should upload proof for an order', async () => {
+  const product = await Product.create({
+    name: 'Proof Product',
+    description: 'proof test',
+    price: 100,
+    quantityAvailable: 5,
+    unit: 'pcs',
+    vendor: vendor._id,
+  });
+
+  const order = await Order.create({
+    senderID: sender._id,
+    vendorID: vendor._id,
+    products: [product._id],
+    quantity: 1,
+    totalPrice: 100,
+    status: 'pending',
+  });
+
+  const proofUrl = 'https://example.com/proof.jpg';
+  const updated = await vendorService.uploadProof(vendor._id, order._id, proofUrl);
+
+  expect(updated.proofOfPackaging).toBe(proofUrl);
+  expect(updated.status).toBe('proof_uploaded'); // ✅ matches enum
+});
+
 
 
 
