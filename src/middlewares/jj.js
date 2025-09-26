@@ -10,25 +10,24 @@ class SenderServiceImpl extends SenderService {
   }
 
   async placeOrder(orderRequest) {
-    const { senderId, receiverName, receiverWallet, amount, currency } = orderRequest;
+  const { senderId, receiverName, receiverWallet, amount, currency, products } = orderRequest;
 
-    if (!senderId || !receiverName || !receiverWallet || !amount) {
-      throw new Error("Missing required fields");
-    }
-
-    const order = await Order.create({
-      orderId: uuidv4(),
-      senderId,
-      receiverName,
-      receiverWallet,
-      amount,
-      currency,
-      status: "pending", // not yet funded
-      funded: false,
-    });
-
-    return order;
+  if (!senderId || !receiverName || !receiverWallet || !amount || !products || products.length === 0) {
+    throw new Error("Missing required fields or products");
   }
+
+  return await Order.create({
+    orderId: uuidv4(),
+    senderId,
+    receiverName,
+    receiverWallet,
+    amount,
+    currency: currency || "SUI",
+    products, // array of Product IDs
+    status: "pending",
+    funded: false,
+  });
+}
 
   async fundOrder(fundRequest) {
     const { orderId, amount, walletAddress } = fundRequest;

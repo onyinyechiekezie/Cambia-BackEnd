@@ -77,16 +77,21 @@ describe("SenderServiceImpl tests", () => {
   });
 });
 
+class BlockchainService {
+  async fundOrderTx(orderId, amount, walletAddress) {
+    throw new Error("Method not implemented");
+  }
+}
+
+module.exports = BlockchainService;
 
 
+const BlockchainService = require("./blockchainService");
 
-
-
-
-class BlockchainServiceMock {
+class BlockchainServiceMock extends BlockchainService {
   async fundOrderTx(orderId, amount, walletAddress) {
     return {
-      txHash: "0xmockedhash_" + orderId,
+      txHash: "0xmocked_" + orderId,
       status: "success",
       amount,
       walletAddress,
