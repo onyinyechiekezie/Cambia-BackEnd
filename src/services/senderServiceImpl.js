@@ -1,4 +1,4 @@
-const SenderService = require('./SenderService');
+const SenderService = require('./senderService');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -9,7 +9,7 @@ const FundOrderRequestValidator = require('../../validator/FundOrderRequestValid
 const ConfirmReceiptRequestValidator = require('../../validator/ConfirmReceiptRequestValidator');
 const CancelOrderRequestValidator = require('../../validator/CancelOrderRequestValidator');
 const TrackOrderRequestValidator = require('../../validator/TrackOrderRequestValidator');
-const SuiEscrowService = require('./SuiEscrowService');
+const SuiEscrowService = require('./suiEscrowService');
 const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
 class SenderServiceImpl extends SenderService {
@@ -177,4 +177,4 @@ class SenderServiceImpl extends SenderService {
   }
 }
 
-module.exports = ConcreteSenderService;
+module.exports = SenderServiceImpl;
