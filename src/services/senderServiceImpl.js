@@ -11,11 +11,11 @@ const ConfirmReceiptRequestValidator = require('../validators/confirmReceiptRequ
 const CancelOrderRequestValidator = require('../validators/cancelOrderValidator');
 const TrackOrderRequestValidator = require('../validators/trackOrderRequestValidator');
 const SuiEscrowService = require('./suiEscrowService');
-const ProductService = require('./productServiceImpl');
+const ProductServiceImpl = require('../services/productServiceImpl');
 const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
 class SenderServiceImpl extends SenderService {
-  constructor(suiEscrowService = new SuiEscrowService(), productService = new ProductService()) {
+  constructor(suiEscrowService = new SuiEscrowService(), productService = new ProductServiceImpl()) {
     super();
     this.suiEscrowService = suiEscrowService;
     this.productService = productService;
