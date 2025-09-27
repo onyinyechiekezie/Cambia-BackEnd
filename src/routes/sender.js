@@ -4,16 +4,16 @@ const SenderController = require('../controllers/senderController');
 const AuthMiddleware = require('../middlewares/authMiddleware');
 const Roles = require('../models/Roles');
 const jwtService = require("../services/jwtService");
-const User = require("./")
+const User = require("../models/User");
 
 const senderController = new SenderController();
 const auth = new AuthMiddleware(jwtService, User);
 
 
 router.post('/', auth.authorize(Roles.SENDER), senderController.createOrder.bind(senderController));
-router.post('/:orderId/fund', authMiddleware(Roles.SENDER), senderController.fundOrder.bind(senderController));
-router.get('/:orderId/track', authMiddleware(Roles.SENDER), senderController.trackOrder.bind(senderController));
-router.post('/:orderId/confirm', authMiddleware(Roles.SENDER), senderController.confirmReceipt.bind(senderController));
-router.post('/:orderId/cancel', authMiddleware(Roles.SENDER), senderController.cancelOrder.bind(senderController));
+router.post('/:orderId/fund', auth.authorize(Roles.SENDER), senderController.fundOrder.bind(senderController));
+router.get('/:orderId/track', auth.authorize(Roles.SENDER), senderController.trackOrder.bind(senderController));
+router.post('/:orderId/confirm', auth.authorize(Roles.SENDER), senderController.confirmReceipt.bind(senderController));
+router.post('/:orderId/cancel', auth.authorize(Roles.SENDER), senderController.cancelOrder.bind(senderController));
 
 module.exports = router;
