@@ -1,39 +1,45 @@
-
-class AuthMiddleware {
-  
-  constructor(jwtService, UserModel) {
+class AuthServiceImpl extends AuthService {
+  constructor(jwtService, passwordService) {
+    super();
     this.jwtService = jwtService;
-    this.UserModel = UserModel;
+    this.passwordService = passwordService;
   }
 
-  
-  authorize(requiredRole) {
-    return async (req, res, next) => {
-      try {
-        const authHeader = req.header('Authorization');
-        if (!authHeader) throw new Error('Authentication token missing');
+  async register(registerRequest) {
+    const validated = RegisterValidator.validate(registerRequest);
 
-        const token = authHeader.replace('Bearer ', '');
-        const decoded = this.jwtService.verify(token);
+    const existingUser = await User.findOne({ email: validated.email });
+    if (existingUser) throw new Error("Email already exists");
 
-        const user = await this.UserModel.findById(decoded.id);
-        if (!user || user.role !== requiredRole) {
-          throw new Error(`Must be a ${requiredRole}`);
-        }
+    const hashedPassword = await this.passwordService.hash(validated.password);
+    const userData = { ...validated, password: hashedPassword };
 
-        req.userId = user._id;
-        req.walletAddress = user.walletAddress;
-        req.role = user.role;
+    const model = userData.role === "sender" ? Sender : Vendor;
+    await model.create(userData);
 
-        next();
-      } catch (error) {
-        res.status(401).json({
-          status: false,
-          message: `Authentication failed: ${error.message}`,
-        });
-      }
-    };
+    return new AuthResponse("User registered successfully", true);
+  }
+
+  async login(loginRequest) {
+    const validated = LoginValidator.validate(loginRequest);
+
+    const user = await User.findOne({ email: validated.email });
+    if (!user) throw new Error("Invalid credentials");
+
+    const isPasswordValid = await this.passwordService.compare(validated.password, user.password);
+    if (!isPasswordValid) throw new Error("Invalid credentials");
+
+    const token = this.jwtService.sign({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      walletAddress: user.walletAddress
+    });
+
+    return { token, user: new AuthResponse("Login successful", true) };
+  }
+
+  verifyToken(token) {
+    return this.jwtService.verify(token);
   }
 }
-
-module.exports = AuthMiddleware;
