@@ -14,7 +14,7 @@ class RegisterValidator {
 
     static validate(data) {
     const { error, value } = this.schema.validate(data, { abortEarly: false });
-    if (error) throw new Error(`Validation error: ${error.message}`);
+    if (error) throw new Error(`Invalid: ${error.message}`);
     return value;
   }
 };
