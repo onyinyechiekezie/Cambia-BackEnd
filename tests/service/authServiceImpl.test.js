@@ -8,22 +8,12 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const connectDB = require('../../src/config/db');
 
-// Mock dependencies
-jest.mock('bcrypt', () => ({
-  hash: jest.fn(),
-  compare: jest.fn(),
-}));
-
-jest.mock('jsonwebtoken', () => ({
-  sign: jest.fn(),
-  verify: jest.fn(),
-}));
-
-// Increase Jest timeout to handle DB connection
 jest.setTimeout(30000);
 
 describe('AuthServiceImpl (persistent MongoDB)', () => {
   let authService;
+  let jwtServiceMock;
+  let passwordServiceMock;
 
   const senderData = {
     email: '1234@gmail.com',
@@ -69,17 +59,14 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
   });
 
   beforeEach(async () => {
-    authService = new AuthServiceImpl();
-    jest.clearAllMocks();
-
-    bcrypt.hash.mockResolvedValue('hashedPassword');
-    bcrypt.compare.mockResolvedValue(true);
-    jwt.sign.mockReturnValue('mocked-jwt-token');
-    jwt.verify.mockReturnValue({ id: 'userId', email: 'test@example.com', role: 'sender' });
-
-    await User.deleteMany({}).exec();
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
+    jwtServiceMock = {
+      sign: jest.fn().mockReturnValue("mocked-jwt-token"),
+      verify: jest.fn().mockReturnValue({ id: "userId", email: 'test@example.com', role: "sender"}),
+    };
+    authService = new AuthServiceImpl(jwtServiceMock, passwordServiceMock);    
+    await User.deleteMany({});
+    await Sender.deleteMany({});
+    await Vendor.deleteMany({});
   });
 
   afterEach(async () => {
