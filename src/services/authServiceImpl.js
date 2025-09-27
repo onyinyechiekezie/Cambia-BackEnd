@@ -6,9 +6,11 @@ const Sender = require('../models/Sender');
 const Vendor = require('../models/Vendor');
 const RegisterValidator = require('../validators/registerValidator');
 const LoginValidator = require('../validators/loginValidator');
+const JwtService = require("./jwtService")
+const { jwtSecret, jwtExpiresIn} = require("../config/env")
 
 class AuthServiceImpl extends AuthService {
-    constructor(jwtService) {
+    constructor(jwtService = new JwtService(jwtSecret, jwtExpiresIn)) {
         super();
         this.jwtService = jwtService;
     }
@@ -50,7 +52,11 @@ class AuthServiceImpl extends AuthService {
     }
 
     verifyToken(token) {
-        return this.jwtService.verify(token);
+        try {
+            return this.jwtService.verify(token, process.env.JWT_SECRET);
+        } catch (error) {
+            throw new Error('Invalid or expired');
+        }
     }
 }
 

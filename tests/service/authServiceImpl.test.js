@@ -5,7 +5,7 @@ const Sender = require('../../src/models/Sender');
 const Vendor = require('../../src/models/Vendor');
 const AuthResponse = require('../../src/dtos/response/AuthResponse');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const JwtService = require('../../src/services/jwtService');
 const connectDB = require('../../src/config/db');
 
 jest.setTimeout(30000);
@@ -13,6 +13,9 @@ jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashedPassword'),
   compare: jest.fn().mockResolvedValue(true),
 }));
+
+// jest.mock('../../src/services/jwtService');
+
 describe('AuthServiceImpl (persistent MongoDB)', () => {
   let authService;
   let jwtServiceMock;
@@ -181,7 +184,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       expect(result.user.status).toBe(true);
       expect(result.user.message).toBe('Login successful');
       expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
-      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token);
+      expect(jwtServiceMock.sign).toHaveBeenCalled();
     });
 
     it('should throw error for invalid email', async () => {
@@ -226,24 +229,25 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       // Arrange
       const token = 'valid-token';
       const decoded = { id: 'userId', email: 'test@example.com', role: 'sender' };
-      jwt.verify.mockReturnValue(decoded);
+jwtServiceMock.verify.mockReturnValue(decoded);
 
       // Act
       const result = await authService.verifyToken(token);
 
       // Assert
       expect(result).toEqual(decoded);
-      expect(jwt.verify).toHaveBeenCalledWith(token, 'test-secret');
+      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token, 'test-secret');
     });
 
     it('should throw error for invalid or expired token', async () => {
       // Arrange
-      jwt.verify.mockImplementationOnce(() => {
+      jwtServiceMock.verify.mockImplementationOnce(() => {
         throw new Error('Invalid token');
       });
 
       // Act & Assert
-      await expect(authService.verifyToken('invalid-token')).rejects.toThrow('Invalid or expired');
+      expect(() => authService.verifyToken('invalid-token')).toThrow('Invalid or expired');
+
     });
   });
 });
