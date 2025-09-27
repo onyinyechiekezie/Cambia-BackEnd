@@ -160,7 +160,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       const invalidData = { ...senderData, email: '' };
 
       // Act & Assert
-      await expect(authService.register(invalidData)).rejects.toThrow(/Validation failed/);
+      await expect(authService.register(invalidData)).rejects.toThrow("Invalid email");
     });
   });
 
@@ -229,7 +229,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
 
     it('should throw error for missing email or password', async () => {
       // Act & Assert
-      await expect(authService.login({ email: '', password: '' })).rejects.toThrow(/Validation failed/);
+      await expect(authService.login({ email: '', password: '' })).rejects.toThrow("Invalid credentials");
     });
 
     it('should throw error for JWT signing failure', async () => {

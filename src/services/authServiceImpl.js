@@ -23,14 +23,8 @@ class AuthServiceImpl extends AuthService {
         const hashedPassword =  await bcrypt.hash(validated.password, 10);
         const userData = { ...validated, password: hashedPassword };
 
-        if(userData.role === 'sender') {
-            await Sender.create(userData);
-        } else if(userData.role === "vendor") {
-            await Vendor.create(userData);
-        } else {
-            throw new Error("Invalid role");
-        }
-
+        const model = userData.role === "sender" ? Sender : Vendor;
+        await model.create(userData);
         return new AuthResponse("User registered successfully", true)
     }
 
@@ -38,10 +32,10 @@ class AuthServiceImpl extends AuthService {
         const validated = LoginValidator.validate(loginRequest);
 
         const user = await User.findOne({ email: validated.email})
-        if(!user) throw new Error("Invalid email");
+        if(!user) throw new Error("Invalid credentials");
 
         const isPasswordValid = await bcrypt.compare(validated.password, user.password);
-        if(!isPasswordValid) throw new Error("Invalid password");
+        if(!isPasswordValid) throw new Error("Invalid credentials");
 
         const token = jwt.sign(
             { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
