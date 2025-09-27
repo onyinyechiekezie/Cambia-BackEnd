@@ -1,54 +1,45 @@
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const AuthServiceImpl = require('../services/authServiceImpl');
 
-const RegisterDTO = require("../dtos/register.dto");
-const LoginDTO = require("../dtos/login.dto");
-
-const registerValidator = require("../validators/registerValidator");
-const loginValidator = require("../validators/loginValidator");
-
-exports.register = async (req, res) => {
-  try {
-    const { error } = registerValidator.validate(req.body);
-    if (error) return res.status(400).json({ error: error.details[0].message });
-
-    const dto = new RegisterDTO(req.body);
-
-    const existingUser = await User.findOne({ email: dto.email });
-    if (existingUser) return res.status(400).json({ error: "User already exists" });
-
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const user = new User({ ...dto, password: hashedPassword });
-    await user.save();
-
-    res.status(201).json({ message: "User registered successfully", user });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+class AuthController {
+  constructor() {
+    this.authService = new AuthServiceImpl();
   }
-};
 
-exports.login = async (req, res) => {
-  try {
-    const { error } = loginValidator.validate(req.body);
-    if (error) return res.status(400).json({ error: error.details[0].message });
+  register = async (req, res) => {
+    try {
+      const result = await this.authService.register(req.body);
+      return res.status(201).json(result);
+    } catch (error){
+      console.error("Register error: ", error.message);
+      return res.status(400).json({ status: false, message: error });
+    }
+  };
 
-    const dto = new LoginDTO(req.body);
+  login = async (req, res)=> {
+    try {
+      const result = await this.authService.login(req.body);
+      res.setHeader("Authorization", `Bearer ${result.token}`);
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error("Login error: ", error.message);
+      return res.status(400).json({ status: false, message: error.message})
+    }
+  };
 
-    const user = await User.findOne({ email: dto.email });
-    if (!user) return res.status(400).json({ error: "Invalid credentials" });
+  verify = async (req, res)=> {
+    try {
+      const {token} = req.query;
+      if(!token) {
+        return res.status(400).json({status: false, message: "Token is required"})
+      }
 
-    const validPassword = await bcrypt.compare(dto.password, user.password);
-    if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
+      const payload = this.authService.verifyToken(token);
+      return res.status(200).json({ status: true, payload });
+    } catch (error) {
+      console.error("Verify error: ", error.message);
+      return res.status(401).json({ status: false, message: error.message})
+    }
+  };
+}
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
-
-    res.json({ message: "Login successful", token });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+module.exports = AuthController;
