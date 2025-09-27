@@ -3,7 +3,7 @@ const VendorController = require('../controllers/VendorController');
 
 const router = express.Router();
 
-router.post('/products', VendorController.addProduct);
+router.post('/products/add', VendorController.addProduct);
 router.put('/products/:productId/stock', VendorController.updateProductStock);
 router.put('/products/:productId/price', VendorController.updateProductPrice);
 router.delete('/products/:productId', VendorController.deleteProduct);
