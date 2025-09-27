@@ -1,4 +1,4 @@
-const vendorService = require('../services/vendorServiceImpl');
+const vendorService = require('../../services/vendorServiceImpl');
 
 class VendorController {
   async addProduct(req, res) {

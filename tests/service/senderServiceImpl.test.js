@@ -1,37 +1,39 @@
-const mongoose = require("mongoose");
-const SenderServiceImpl = require("../../src/services/senderServiceImpl");
-const Sender = require("../../src/models/Sender");
-const Vendor = require("../../src/models/Vendor");
+const mongoose = require('mongoose');
+const crypto = require('crypto');
+const SenderServiceImpl = require('../../src/services/senderServiceImpl');
+const ProductService = require('../../src/services/productServiceImpl');
+const SuiEscrowService = require('../../src/services/suiEscrowService');
+const User = require('../../src/models/User');
 const Product = require('../../src/models/Product');
 const Order = require('../../src/models/Order');
 const Roles = require('../../src/models/Roles');
 const Status = require('../../src/models/Status');
-const OrderRequest = require('../../src/dtos/request/orderRequest');
-const FundOrderRequest = require('../../src/dtos/request/fundOrderRequest');
-const TrackOrderRequest = require('../../src/dtos/request/trackOrderRequest');
-const ConfirmReceiptRequest = require('../../src/dtos/request/confirmReceiptRequest');
-const CancelOrderRequest = require('../../src/dtos/request/cancelOrderRequest');
-const SuiEscrowService = require('../../src/services/suiEscrowService')
-const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 const connectDB = require('../../src/config/db');
+const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
-jest.mock("../../src/services/suiEscrowService")
+jest.setTimeout(30000);
+jest.mock('../../src/services/productServiceImpl');
+jest.mock('../../src/services/suiEscrowService');
 
-describe('SenderServiceImpl', () => {
+describe('SenderServiceImpl (persistent MongoDB)', () => {
   let senderService;
+  let productServiceMock;
+  let suiEscrowServiceMock;
   let senderId;
   let vendorId;
-  let productId;
-  let orderId;
-  let trustlessSwapId = '0x1234567890abcdef';
-  let unlockKey = 'randomkey123';
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
-    process.env.VERIFIER_PRIVATE_KEY = 'verifierPrivateKey';
     process.env.JWT_SECRET = 'test-secret';
-    await connectDB();
-    console.log('Connected to persistent test DB for manual inspection.');
+    process.env.VERIFIER_ADDRESS = '0xSOME_VERIFIER_ADDRESS';
+    process.env.VERIFIER_PRIVATE_KEY = Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex');
+    try {
+      await connectDB();
+      console.log('Connected to persistent test DB (cambia_test) for manual inspection.');
+    } catch (error) {
+      console.error('Failed to connect to MongoDB:', error);
+      throw error;
+    }
   });
 
   afterAll(async () => {
@@ -39,411 +41,702 @@ describe('SenderServiceImpl', () => {
   });
 
   beforeEach(async () => {
-    senderService = new SenderServiceImpl();
+    productServiceMock = {
+      updateStock: jest.fn(),
+    };
+    suiEscrowServiceMock = {
+      createEscrow: jest.fn().mockResolvedValue('swap123'),
+      verifyAndRelease: jest.fn().mockResolvedValue('txDigest123'),
+      cancelEscrow: jest.fn().mockResolvedValue('txDigest456'),
+    };
+    ProductService.mockImplementation(() => productServiceMock);
+    SuiEscrowService.mockImplementation(() => suiEscrowServiceMock);
+    senderService = new SenderServiceImpl(suiEscrowServiceMock, productServiceMock);
     jest.clearAllMocks();
 
-    // Clear collections
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
+    await User.deleteMany({}).exec();
     await Product.deleteMany({}).exec();
     await Order.deleteMany({}).exec();
 
-    // Setup test data
-    const sender = await Sender.create({
-      _id: new mongoose.Types.ObjectId(),
-      firstName: 'John',
-      lastName: 'Doe',
-      email: 'john@example.com',
-      password: 'hashedpassword',
-      phone: '1234567890',
-      walletAddress: '0xsender',
-      address: '123 Main St',
+    const sender = await User.create({
+      firstName: 'Test',
+      lastName: 'Sender',
+      email: `sender+${Date.now()}@example.com`,
+      phone: '0800000000',
+      walletAddress: '0x' + crypto.randomBytes(32).toString('hex'),
+      address: '123 Sender St',
       role: Roles.SENDER,
+      password: 'hashedPassword',
     });
     senderId = sender._id;
 
-    const vendor = await Vendor.create({
-      _id: new mongoose.Types.ObjectId(),
-      firstName: 'Jane',
+    const vendor = await User.create({
+      firstName: 'Test',
       lastName: 'Vendor',
-      email: 'jane@example.com',
-      password: 'hashedpassword',
-      phone: '0987654321',
-      walletAddress: '0xvendor',
-      address: '456 Market St',
+      email: `vendor+${Date.now()}@example.com`,
+      phone: '0900000000',
+      walletAddress: '0x' + crypto.randomBytes(32).toString('hex'),
+      address: '456 Vendor St',
       role: Roles.VENDOR,
+      password: 'hashedPassword',
     });
     vendorId = vendor._id;
-
-    const product = await Product.create({
-      _id: new mongoose.Types.ObjectId(),
-      name: 'Apple',
-      description: 'Fresh apple',
-      price: 100,
-      quantityAvailable: 50,
-      unit: 'kg',
-      category: new mongoose.Types.ObjectId(),
-      vendor: vendorId,
-    });
-    productId = product._id;
   });
 
   afterEach(async () => {
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
+    await User.deleteMany({}).exec();
     await Product.deleteMany({}).exec();
     await Order.deleteMany({}).exec();
   });
 
-  describe('createOrder', () => {
-    it('should create an order successfully', async () => {
+  describe('placeOrder', () => {
+    it('should place an order with valid products and stock', async () => {
       // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: productId.toString(), quantity: 2 }],
-        null
-      );
+      const product1 = await Product.create({
+        name: 'Product 1',
+        description: 'Test product 1',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const product2 = await Product.create({
+        name: 'Product 2',
+        description: 'Test product 2',
+        price: 200,
+        quantityAvailable: 5,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const orderRequest = {
+        products: [
+          { productId: product1._id.toString(), quantity: 2 },
+          { productId: product2._id.toString(), quantity: 1 },
+        ],
+        trustlessSwapID: 'swap123',
+      };
+      productServiceMock.updateStock
+        .mockResolvedValueOnce({ ...product1.toObject(), quantityAvailable: 8 })
+        .mockResolvedValueOnce({ ...product2.toObject(), quantityAvailable: 4 });
 
       // Act
       const order = await senderService.placeOrder(orderRequest, senderId);
 
       // Assert
-      expect(order).toBeDefined();
+      expect(order).toHaveProperty('_id');
       expect(order.senderID.toString()).toBe(senderId.toString());
       expect(order.vendorID.toString()).toBe(vendorId.toString());
-      expect(order.products).toHaveLength(1);
-      expect(order.products[0].productID.toString()).toBe(productId.toString());
-      expect(order.products[0].quantity).toBe(2);
-      expect(order.totalPrice).toBe(200);
       expect(order.status).toBe(Status.PENDING);
-      expect(order.unlockKey).toBeDefined();
-
-      const product = await Product.findById(productId);
-      expect(product.quantityAvailable).toBe(48); // 50 - 2
+      expect(order.totalPrice).toBe(100 * 2 + 200 * 1); // 400
+      expect(order.products).toEqual([
+        { productID: product1._id, quantity: 2 },
+        { productID: product2._id, quantity: 1 },
+      ]);
+      expect(order.trustlessSwapID).toBe('swap123');
+      expect(order.unlockKey).toHaveLength(32);
+      expect(productServiceMock.updateStock).toHaveBeenCalledTimes(2);
+      expect(productServiceMock.updateStock).toHaveBeenCalledWith(product1._id, 8);
+      expect(productServiceMock.updateStock).toHaveBeenCalledWith(product2._id, 4);
     });
 
     it('should throw error for invalid sender', async () => {
       // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: productId.toString(), quantity: 2 }],
-        null
-      );
-      const invalidSenderId = new mongoose.Types.ObjectId();
+      const orderRequest = { products: [{ productId: new mongoose.Types.ObjectId().toString(), quantity: 1 }] };
 
       // Act & Assert
-      await expect(senderService.placeOrder(orderRequest, invalidSenderId)).rejects.toThrow('Invalid sender');
+      await expect(senderService.placeOrder(orderRequest, new mongoose.Types.ObjectId()))
+        .rejects.toThrow('Invalid sender');
     });
 
-    it('should throw error for invalid product', async () => {
+    it('should throw error for invalid product ID', async () => {
       // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: new mongoose.Types.ObjectId().toString(), quantity: 2 }],
-        null
-      );
+      const orderRequest = { products: [{ productId: 'invalid-id', quantity: 1 }], trustlessSwapID: 'swap123' };
 
       // Act & Assert
-      await expect(senderService.placeOrder(orderRequest, senderId)).rejects.toThrow(/Product .* not found/);
+      await expect(senderService.placeOrder(orderRequest, senderId))
+        .rejects.toThrow('Product invalid-id not found');
     });
 
     it('should throw error for insufficient stock', async () => {
       // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: productId.toString(), quantity: 100 }],
-        null
-      );
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 5,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const orderRequest = { products: [{ productId: product._id.toString(), quantity: 10 }], trustlessSwapID: 'swap123' };
 
       // Act & Assert
-      await expect(senderService.placeOrder(orderRequest, senderId)).rejects.toThrow(/Insufficient stock/);
+      await expect(senderService.placeOrder(orderRequest, senderId))
+        .rejects.toThrow(`Insufficient stock for product ${product.name}`);
     });
 
-    it('should throw error for multiple vendors', async () => {
+    it('should throw error for products from different vendors', async () => {
       // Arrange
-      const anotherVendor = await Vendor.create({
-        _id: new mongoose.Types.ObjectId(),
-        firstName: 'Bob',
+      const otherVendor = await User.create({
+        firstName: 'Other',
         lastName: 'Vendor',
-        email: 'bob@example.com',
-        password: 'hashedpassword',
-        phone: '1112223333',
-        walletAddress: '0xvendor2',
-        address: '789 High St',
+        email: `other+${Date.now()}@example.com`,
+        phone: '0900000000',
+        walletAddress: '0x' + crypto.randomBytes(32).toString('hex'),
+        address: '456 Other St',
         role: Roles.VENDOR,
+        password: 'hashedPassword',
       });
-      const anotherProduct = await Product.create({
-        _id: new mongoose.Types.ObjectId(),
-        name: 'Orange',
-        description: 'Fresh orange',
-        price: 150,
-        quantityAvailable: 30,
-        unit: 'kg',
-        category: new mongoose.Types.ObjectId(),
-        vendor: anotherVendor._id,
+      const product1 = await Product.create({
+        name: 'Product 1',
+        description: 'Test product 1',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
       });
-
-      const orderRequest = new OrderRequest(
-        [
-          { productId: productId.toString(), quantity: 2 },
-          { productId: anotherProduct._id.toString(), quantity: 1 },
+      const product2 = await Product.create({
+        name: 'Product 2',
+        description: 'Test product 2',
+        price: 200,
+        quantityAvailable: 5,
+        unit: 'pcs',
+        vendor: otherVendor._id,
+      });
+      const orderRequest = {
+        products: [
+          { productId: product1._id.toString(), quantity: 2 },
+          { productId: product2._id.toString(), quantity: 1 },
         ],
-        null
-      );
+        trustlessSwapID: 'swap123',
+      };
 
       // Act & Assert
-      await expect(senderService.placeOrder(orderRequest, senderId)).rejects.toThrow('All products must be from the same vendor');
+      await expect(senderService.placeOrder(orderRequest, senderId))
+        .rejects.toThrow('All products must be from the same vendor');
+    });
+
+    it('should throw error for invalid order request', async () => {
+      // Arrange
+      const orderRequest = { products: [] };
+
+      // Act & Assert
+      await expect(senderService.placeOrder(orderRequest, senderId))
+        .rejects.toThrow(/Order validation failed: products: Array must contain at least 1 item/);
+    });
+
+    it('should throw error for missing VERIFIER_ADDRESS', async () => {
+      // Arrange
+      delete process.env.VERIFIER_ADDRESS;
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const orderRequest = { products: [{ productId: product._id.toString(), quantity: 1 }], trustlessSwapID: 'swap123' };
+
+      // Act & Assert
+      await expect(senderService.placeOrder(orderRequest, senderId))
+        .rejects.toThrow('VERIFIER_ADDRESS environment variable is required');
     });
   });
 
   describe('fundOrder', () => {
-    beforeEach(async () => {
+    it('should fund an order and update status', async () => {
+      // Arrange
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
       const order = await Order.create({
         senderID: senderId,
         vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
+        products: [{ productID: product._id, quantity: 2 }],
         totalPrice: 200,
         status: Status.PENDING,
-        trustlessSwapID: null,
-        unlockKey,
-        verifierAddress: '0xverifier',
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+        verifierAddress: process.env.VERIFIER_ADDRESS,
       });
-      orderId = order._id;
-
-      // Mock SuiEscrowService.createEscrow
-      SuiEscrowService.prototype.createEscrow.mockResolvedValue(trustlessSwapId);
-    });
-
-    it('should fund an order successfully', async () => {
-      // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'senderPrivateKey'
-      );
+      const fundRequest = {
+        orderId: order._id.toString(),
+        amount: 200,
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
+      const sender = await User.findById(senderId);
 
       // Act
-      const order = await senderService.fundOrder(fundRequest, senderId);
+      const updatedOrder = await senderService.fundOrder(fundRequest, senderId);
 
       // Assert
-      expect(order).toBeDefined();
-      expect(order.status).toBe(Status.RECEIVED);
-      expect(order.trustlessSwapID).toBe(trustlessSwapId);
-      expect(SuiEscrowService.prototype.createEscrow).toHaveBeenCalledWith(
-        expect.any(Object), // Ed25519Keypair
-        '0xsender',
-        '0xvendor',
-        '0xverifier',
+      expect(updatedOrder.status).toBe(Status.RECEIVED);
+      expect(updatedOrder.trustlessSwapID).toBe('swap123');
+      expect(suiEscrowServiceMock.createEscrow).toHaveBeenCalledWith(
+        expect.any(Object), // senderKeypair
+        sender.walletAddress,
+        expect.any(String), // vendor.walletAddress
+        process.env.VERIFIER_ADDRESS,
         200,
-        unlockKey
+        'secureKey'
       );
+    });
+
+    it('should throw error for invalid order ID', async () => {
+      // Arrange
+      const fundRequest = { orderId: 'invalid-id', amount: 200, senderWalletPrivateKey: 'key' };
+
+      // Act & Assert
+      await expect(senderService.fundOrder(fundRequest, senderId))
+        .rejects.toThrow('Order not found');
     });
 
     it('should throw error for unauthorized sender', async () => {
       // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'senderPrivateKey'
-      );
-      const otherSenderId = new mongoose.Types.ObjectId();
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: new mongoose.Types.ObjectId(),
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PENDING,
+        unlockKey: 'secureKey',
+      });
+      const fundRequest = {
+        orderId: order._id.toString(),
+        amount: 200,
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
 
       // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, otherSenderId)).rejects.toThrow('Unauthorized');
+      await expect(senderService.fundOrder(fundRequest, senderId))
+        .rejects.toThrow('Unauthorized');
     });
 
     it('should throw error for non-pending order', async () => {
       // Arrange
-      await Order.findByIdAndUpdate(orderId, { status: Status.RECEIVED });
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'senderPrivateKey'
-      );
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.RECEIVED,
+        unlockKey: 'secureKey',
+      });
+      const fundRequest = {
+        orderId: order._id.toString(),
+        amount: 200,
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
 
       // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, senderId)).rejects.toThrow('Order not in pending state');
+      await expect(senderService.fundOrder(fundRequest, senderId))
+        .rejects.toThrow('Order not in pending state');
     });
 
     it('should throw error for incorrect amount', async () => {
       // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        300,
-        'senderPrivateKey'
-      );
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PENDING,
+        unlockKey: 'secureKey',
+      });
+      const fundRequest = {
+        orderId: order._id.toString(),
+        amount: 300,
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
 
       // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, senderId)).rejects.toThrow('Amount does not match order total');
+      await expect(senderService.fundOrder(fundRequest, senderId))
+        .rejects.toThrow('Amount does not match order total');
     });
 
-    it('should throw error for invalid sender wallet', async () => {
+    it('should throw error for missing VERIFIER_PRIVATE_KEY', async () => {
       // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'invalidPrivateKey'
-      );
+      delete process.env.VERIFIER_PRIVATE_KEY;
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PENDING,
+        unlockKey: 'secureKey',
+      });
+      const fundRequest = {
+        orderId: order._id.toString(),
+        amount: 200,
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
 
       // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, senderId)).rejects.toThrow('Sender not found');
+      await expect(senderService.fundOrder(fundRequest, senderId))
+        .rejects.toThrow('VERIFIER_PRIVATE_KEY environment variable is required');
     });
   });
 
   describe('trackOrder', () => {
-    beforeEach(async () => {
+    it('should track an order', async () => {
+      // Arrange
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
       const order = await Order.create({
         senderID: senderId,
         vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
+        products: [{ productID: product._id, quantity: 2 }],
         totalPrice: 200,
-        status: Status.RECEIVED,
-        trustlessSwapID: trustlessSwapId,
-        unlockKey,
-        verifierAddress: '0xverifier',
+        status: Status.PENDING,
+        unlockKey: 'secureKey',
       });
-      orderId = order._id;
-    });
-
-    it('should track an order successfully', async () => {
-      // Arrange
-      const trackRequest = new TrackOrderRequest(orderId.toString());
+      const trackRequest = { orderId: order._id.toString() };
 
       // Act
-      const order = await senderService.trackOrder(trackRequest, senderId);
+      const result = await senderService.trackOrder(trackRequest, senderId);
 
       // Assert
-      expect(order).toBeDefined();
-      expect(order._id.toString()).toBe(orderId.toString());
-      expect(order.status).toBe(Status.RECEIVED);
-      expect(order.products[0].productID.name).toBe('Apple');
+      expect(result._id.toString()).toBe(order._id.toString());
+      expect(result.senderID.toString()).toBe(senderId.toString());
+    });
+
+    it('should throw error for invalid order ID', async () => {
+      // Arrange
+      const trackRequest = { orderId: 'invalid-id' };
+
+      // Act & Assert
+      await expect(senderService.trackOrder(trackRequest, senderId))
+        .rejects.toThrow('Order not found');
     });
 
     it('should throw error for unauthorized sender', async () => {
       // Arrange
-      const trackRequest = new TrackOrderRequest(orderId.toString());
-      const otherSenderId = new mongoose.Types.ObjectId();
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: new mongoose.Types.ObjectId(),
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PENDING,
+        unlockKey: 'secureKey',
+      });
+      const trackRequest = { orderId: order._id.toString() };
 
       // Act & Assert
-      await expect(senderService.trackOrder(trackRequest, otherSenderId)).rejects.toThrow('Unauthorized');
-    });
-
-    it('should throw error for non-existent order', async () => {
-      // Arrange
-      const trackRequest = new TrackOrderRequest(new mongoose.Types.ObjectId().toString());
-
-      // Act & Assert
-      await expect(senderService.trackOrder(trackRequest, senderId)).rejects.toThrow('Order not found');
+      await expect(senderService.trackOrder(trackRequest, senderId))
+        .rejects.toThrow('Unauthorized');
     });
   });
 
   describe('confirmReceipt', () => {
-    beforeEach(async () => {
+    it('should confirm receipt and release escrow', async () => {
+      // Arrange
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
       const order = await Order.create({
         senderID: senderId,
         vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
+        products: [{ productID: product._id, quantity: 2 }],
         totalPrice: 200,
         status: Status.PROOF_UPLOADED,
-        trustlessSwapID: trustlessSwapId,
-        unlockKey,
-        verifierAddress: '0xverifier',
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+        verifierAddress: process.env.VERIFIER_ADDRESS,
       });
-      orderId = order._id;
-
-      // Mock SuiEscrowService.verifyAndRelease
-      SuiEscrowService.prototype.verifyAndRelease.mockResolvedValue('0xtxDigest');
-    });
-
-    it('should confirm receipt successfully', async () => {
-      // Arrange
-      const confirmRequest = new ConfirmReceiptRequest(orderId.toString(), unlockKey);
+      const confirmRequest = { orderId: order._id.toString(), unlockKey: 'secureKey' };
 
       // Act
       const result = await senderService.confirmReceipt(confirmRequest, senderId);
 
       // Assert
-      expect(result.order).toBeDefined();
       expect(result.order.status).toBe(Status.DELIVERED);
-      expect(result.txDigest).toBe('0xtxDigest');
-      expect(SuiEscrowService.prototype.verifyAndRelease).toHaveBeenCalledWith(
-        expect.any(Object), // Ed25519Keypair
-        '0xverifier',
-        trustlessSwapId,
-        unlockKey,
+      expect(result.txDigest).toBe('txDigest123');
+      expect(suiEscrowServiceMock.verifyAndRelease).toHaveBeenCalledWith(
+        expect.any(Object), // verifierKeypair
+        process.env.VERIFIER_ADDRESS,
+        'swap123',
+        'secureKey',
         200
       );
     });
 
-    it('should throw error for invalid unlock key', async () => {
+    it('should throw error for invalid order ID', async () => {
       // Arrange
-      const confirmRequest = new ConfirmReceiptRequest(orderId.toString(), 'wrongkey');
+      const confirmRequest = { orderId: 'invalid-id', unlockKey: 'secureKey' };
 
       // Act & Assert
-      await expect(senderService.confirmReceipt(confirmRequest, senderId)).rejects.toThrow('Invalid unlock key');
+      await expect(senderService.confirmReceipt(confirmRequest, senderId))
+        .rejects.toThrow('Order not found');
     });
 
-    it('should throw error for non-proof_uploaded order', async () => {
+    it('should throw error for unauthorized sender', async () => {
       // Arrange
-      await Order.findByIdAndUpdate(orderId, { status: Status.RECEIVED });
-      const confirmRequest = new ConfirmReceiptRequest(orderId.toString(), unlockKey);
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: new mongoose.Types.ObjectId(),
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PROOF_UPLOADED,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+      });
+      const confirmRequest = { orderId: order._id.toString(), unlockKey: 'secureKey' };
 
       // Act & Assert
-      await expect(senderService.confirmReceipt(confirmRequest, senderId)).rejects.toThrow('Proof not uploaded');
+      await expect(senderService.confirmReceipt(confirmRequest, senderId))
+        .rejects.toThrow('Unauthorized');
+    });
+
+    it('should throw error for invalid unlock key', async () => {
+      // Arrange
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PROOF_UPLOADED,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+      });
+      const confirmRequest = { orderId: order._id.toString(), unlockKey: 'wrongKey' };
+
+      // Act & Assert
+      await expect(senderService.confirmReceipt(confirmRequest, senderId))
+        .rejects.toThrow('Invalid unlock key');
+    });
+
+    it('should throw error for non-PROOF_UPLOADED order', async () => {
+      // Arrange
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PENDING,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+      });
+      const confirmRequest = { orderId: order._id.toString(), unlockKey: 'secureKey' };
+
+      // Act & Assert
+      await expect(senderService.confirmReceipt(confirmRequest, senderId))
+        .rejects.toThrow('Proof not uploaded');
+    });
+
+    it('should throw error for missing VERIFIER_PRIVATE_KEY', async () => {
+      // Arrange
+      delete process.env.VERIFIER_PRIVATE_KEY;
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PROOF_UPLOADED,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+      });
+      const confirmRequest = { orderId: order._id.toString(), unlockKey: 'secureKey' };
+
+      // Act & Assert
+      await expect(senderService.confirmReceipt(confirmRequest, senderId))
+        .rejects.toThrow('VERIFIER_PRIVATE_KEY environment variable is required');
     });
   });
 
   describe('cancelOrder', () => {
-    beforeEach(async () => {
+    it('should cancel an order and restore stock', async () => {
+      // Arrange
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
       const order = await Order.create({
         senderID: senderId,
         vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
+        products: [{ productID: product._id, quantity: 2 }],
         totalPrice: 200,
-        status: Status.RECEIVED,
-        trustlessSwapID: trustlessSwapId,
-        unlockKey,
-        verifierAddress: '0xverifier',
+        status: Status.PENDING,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
       });
-      orderId = order._id;
-
-      // Mock SuiEscrowService.cancelEscrow
-      SuiEscrowService.prototype.cancelEscrow.mockResolvedValue('0xtxDigest');
-    });
-
-    it('should cancel an order successfully', async () => {
-      // Arrange
-      const cancelRequest = new CancelOrderRequest(orderId.toString(), 'senderPrivateKey');
+      const cancelRequest = {
+        orderId: order._id.toString(),
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
+      productServiceMock.updateStock.mockResolvedValue({ ...product.toObject(), quantityAvailable: 12 });
+      const sender = await User.findById(senderId);
 
       // Act
       const result = await senderService.cancelOrder(cancelRequest, senderId);
 
       // Assert
-      expect(result.order).toBeDefined();
       expect(result.order.status).toBe(Status.CANCELLED);
-      expect(result.txDigest).toBe('0xtxDigest');
-      expect(SuiEscrowService.prototype.cancelEscrow).toHaveBeenCalledWith(
-        expect.any(Object), // Ed25519Keypair
-        '0xsender',
-        trustlessSwapId
+      expect(result.txDigest).toBe('txDigest456');
+      expect(productServiceMock.updateStock).toHaveBeenCalledWith(product._id, 12);
+      expect(suiEscrowServiceMock.cancelEscrow).toHaveBeenCalledWith(
+        expect.any(Object), // senderKeypair
+        sender.walletAddress,
+        'swap123'
       );
+    });
 
-      const product = await Product.findById(productId);
-      expect(product.quantityAvailable).toBe(52); // 50 - 2 + 2
+    it('should throw error for invalid order ID', async () => {
+      // Arrange
+      const cancelRequest = { orderId: 'invalid-id', senderWalletPrivateKey: 'key' };
+
+      // Act & Assert
+      await expect(senderService.cancelOrder(cancelRequest, senderId))
+        .rejects.toThrow('Order not found');
     });
 
     it('should throw error for unauthorized sender', async () => {
       // Arrange
-      const cancelRequest = new CancelOrderRequest(orderId.toString(), 'senderPrivateKey');
-      const otherSenderId = new mongoose.Types.ObjectId();
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: new mongoose.Types.ObjectId(),
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.PENDING,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+      });
+      const cancelRequest = {
+        orderId: order._id.toString(),
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
 
       // Act & Assert
-      await expect(senderService.cancelOrder(cancelRequest, otherSenderId)).rejects.toThrow('Unauthorized');
+      await expect(senderService.cancelOrder(cancelRequest, senderId))
+        .rejects.toThrow('Unauthorized');
     });
 
-    it('should throw error for non-cancelable order', async () => {
+    it('should throw error for non-cancelable order state', async () => {
       // Arrange
-      await Order.findByIdAndUpdate(orderId, { status: Status.DELIVERED });
-      const cancelRequest = new CancelOrderRequest(orderId.toString(), 'senderPrivateKey');
+      const product = await Product.create({
+        name: 'Product',
+        description: 'Test product',
+        price: 100,
+        quantityAvailable: 10,
+        unit: 'pcs',
+        vendor: vendorId,
+      });
+      const order = await Order.create({
+        senderID: senderId,
+        vendorID: vendorId,
+        products: [{ productID: product._id, quantity: 2 }],
+        totalPrice: 200,
+        status: Status.DELIVERED,
+        trustlessSwapID: 'swap123',
+        unlockKey: 'secureKey',
+      });
+      const cancelRequest = {
+        orderId: order._id.toString(),
+        senderWalletPrivateKey: Buffer.from(Ed25519Keypair.generate().getSecretKey()).toString('hex'),
+      };
 
       // Act & Assert
-      await expect(senderService.cancelOrder(cancelRequest, senderId)).rejects.toThrow('Cannot cancel order in this state');
+      await expect(senderService.cancelOrder(cancelRequest, senderId))
+        .rejects.toThrow('Cannot cancel order in this state');
     });
   });
 });
