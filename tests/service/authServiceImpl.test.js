@@ -50,6 +50,7 @@ describe('Authentication service tests', () => {
 
     beforeAll(async() => {
         process.env.NODE_ENV = 'test';
+        process.env.JWT_SECRET = "test-secret"
         await connectDB();
         console.log('Connected to persistent test DB for manual inspection.');
     });
