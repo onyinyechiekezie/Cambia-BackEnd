@@ -1,69 +1,133 @@
 const SenderServiceImpl = require('../services/senderServiceImpl');
-const OrderRequest = require('../../dto/request/OrderRequest');
-const OrderResponse = require('../../dto/response/OrderResponse');
-const FundOrderRequest = require('../../dto/request/FundOrderRequest');
-const ConfirmReceiptRequest = require('../../dto/request/ConfirmReceiptRequest');
-const CancelOrderRequest = require('../../dto/request/CancelOrderRequest');
-const TrackOrderRequest = require('../../dto/request/TrackOrderRequest');
-const TrackOrderResponse = require('../../dto/response/TrackOrderResponse');
 
 class SenderController {
-  constructor() {
-    this.senderService = new SenderServiceImpl();
+  constructor(senderService = new SenderServiceImpl()) {
+    this.senderService = senderService;
   }
 
   async createOrder(req, res) {
     try {
-      const orderRequest = new OrderRequest(req.body.products, req.body.trustlessSwapID);
-      const order = await this.senderService.placeOrder(orderRequest, req.userId);
-      res.status(201).json(new OrderResponse(order));
+      const order = await this.senderService.placeOrder(req.body, req.userId);
+      res.status(201).json({
+        status: true,
+        data: {
+          orderId: order._id,
+          senderId: order.senderID,
+          vendorId: order.vendorID,
+          products: order.products,
+          totalPrice: order.totalPrice,
+          status: order.status,
+          trustlessSwapID: order.trustlessSwapID,
+        },
+      });
     } catch (error) {
-      console.error('Create order error:', error.message);
-      res.status(400).json({ status: false, message: error.message });
+      console.error('Error creating order:', error.message);
+      const statusCode = error.message.includes('Invalid sender') || error.message.includes('Unauthorized') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 
   async fundOrder(req, res) {
     try {
-      const fundRequest = new FundOrderRequest(req.params.orderId, req.body.amount, req.body.senderWalletPrivateKey);
+      const fundRequest = { orderId: req.params.orderId, amount: req.body.amount, senderWalletPrivateKey: req.body.senderWalletPrivateKey };
       const order = await this.senderService.fundOrder(fundRequest, req.userId);
-      res.status(200).json(new OrderResponse(order));
+      res.status(200).json({
+        status: true,
+        data: {
+          orderId: order._id,
+          senderId: order.senderID,
+          vendorId: order.vendorID,
+          products: order.products,
+          totalPrice: order.totalPrice,
+          status: order.status,
+          trustlessSwapID: order.trustlessSwapID,
+        },
+      });
     } catch (error) {
-      console.error('Fund order error:', error.message);
-      res.status(400).json({ status: false, message: error.message });
+      console.error('Error funding order:', error.message);
+      const statusCode = error.message.includes('Unauthorized') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 
   async trackOrder(req, res) {
     try {
-      const trackRequest = new TrackOrderRequest(req.params.orderId);
+      const trackRequest = { orderId: req.params.orderId };
       const order = await this.senderService.trackOrder(trackRequest, req.userId);
-      res.status(200).json(new TrackOrderResponse(order));
+      res.status(200).json({
+        status: true,
+        data: {
+          orderId: order._id,
+          senderId: order.senderID,
+          vendorId: order.vendorID,
+          products: order.products,
+          totalPrice: order.totalPrice,
+          status: order.status,
+          trustlessSwapID: order.trustlessSwapID,
+          proofOfPackaging: order.proofOfPackaging,
+        },
+      });
     } catch (error) {
-      console.error('Track order error:', error.message);
-      res.status(400).json({ status: false, message: error.message });
+      console.error('Error tracking order:', error.message);
+      const statusCode = error.message.includes('Unauthorized') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 
   async confirmReceipt(req, res) {
     try {
-      const confirmRequest = new ConfirmReceiptRequest(req.params.orderId, req.body.unlockKey);
+      const confirmRequest = { orderId: req.params.orderId, unlockKey: req.body.unlockKey };
       const { order, txDigest } = await this.senderService.confirmReceipt(confirmRequest, req.userId);
-      res.status(200).json({ order: new OrderResponse(order), txDigest });
+      res.status(200).json({
+        status: true,
+        data: {
+          order: {
+            orderId: order._id,
+            senderId: order.senderID,
+            vendorId: order.vendorID,
+            products: order.products,
+            totalPrice: order.totalPrice,
+            status: order.status,
+            trustlessSwapID: order.trustlessSwapID,
+          },
+          txDigest,
+        },
+      });
     } catch (error) {
-      console.error("Conform receipt error: ", error.message)
-      res.status(400).json({ status: false, message: error.message });
+      console.error('Error confirming receipt:', error.message);
+      const statusCode = error.message.includes('Unauthorized') || error.message.includes('Invalid unlock key') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 
   async cancelOrder(req, res) {
     try {
-      const cancelRequest = new CancelOrderRequest(req.params.orderId, req.body.senderWalletPrivateKey);
+      const cancelRequest = { orderId: req.params.orderId, senderWalletPrivateKey: req.body.senderWalletPrivateKey };
       const { order, txDigest } = await this.senderService.cancelOrder(cancelRequest, req.userId);
-      res.status(200).json({ order: new OrderResponse(order), txDigest });
+      res.status(200).json({
+        status: true,
+        data: {
+          order: {
+            orderId: order._id,
+            senderId: order.senderID,
+            vendorId: order.vendorID,
+            products: order.products,
+            totalPrice: order.totalPrice,
+            status: order.status,
+            trustlessSwapID: order.trustlessSwapID,
+          },
+          txDigest,
+        },
+      });
     } catch (error) {
-      console.error("Cancel order error: ", error.message)
-      res.status(400).json({ status: false, message: error.message });
+      console.error('Error canceling order:', error.message);
+      const statusCode = error.message.includes('Unauthorized') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 }

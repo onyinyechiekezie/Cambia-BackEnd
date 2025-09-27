@@ -1,19 +1,138 @@
+```javascript
+const VendorServiceImpl = require('../services/VendorServiceImpl');
 
-const SenderServiceImpl = require('../services/SenderServiceImpl');
+class VendorController {
+  constructor(vendorService = new VendorServiceImpl()) {
+    this.vendorService = vendorService;
+  }
 
-class SenderController {
-  constructor(senderService = new SenderServiceImpl()) {
-    this.senderService = senderService;
+  async addProduct(req, res) {
+    try {
+      const product = await this.vendorService.addProduct(req.userId, req.body);
+      res.status(201).json({
+        status: true,
+        data: {
+          productId: product._id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          quantityAvailable: product.quantityAvailable,
+          unit: product.unit,
+          vendorId: product.vendor,
+        },
+      });
+    } catch (error) {
+      console.error('Error adding product:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
+    }
+  }
+
+  async updateProductStock(req, res) {
+    try {
+      const { productId } = req.params;
+      const { quantity } = req.body;
+      const product = await this.vendorService.updateProductStock(req.userId, productId, quantity);
+      res.status(200).json({
+        status: true,
+        data: {
+          productId: product._id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          quantityAvailable: product.quantityAvailable,
+          unit: product.unit,
+          vendorId: product.vendor,
+        },
+      });
+    } catch (error) {
+      console.error('Error updating product stock:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not owned') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
+    }
+  }
+
+  async updateProductPrice(req, res) {
+    try {
+      const { productId } = req.params;
+      const { price } = req.body;
+      const product = await this.vendorService.updateProductPrice(req.userId, productId, price);
+      res.status(200).json({
+        status: true,
+        data: {
+          productId: product._id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          quantityAvailable: product.quantityAvailable,
+          unit: product.unit,
+          vendorId: product.vendor,
+        },
+      });
+    } catch (error) {
+      console.error('Error updating product price:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not owned') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
+    }
+  }
+
+  async deleteProduct(req, res) {
+    try {
+      const { productId } = req.params;
+      const product = await this.vendorService.deleteProduct(req.userId, productId);
+      res.status(200).json({
+        status: true,
+        data: {
+          productId: product._id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          quantityAvailable: product.quantityAvailable,
+          unit: product.unit,
+          vendorId: product.vendor,
+        },
+      });
+    } catch (error) {
+      console.error('Error deleting product:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not owned') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
+    }
+  }
+
+  async getVendorProducts(req, res) {
+    try {
+      const products = await this.vendorService.getVendorProducts(req.userId);
+      res.status(200).json({
+        status: true,
+        data: products.map(product => ({
+          productId: product._id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          quantityAvailable: product.quantityAvailable,
+          unit: product.unit,
+          vendorId: product.vendor,
+        })),
+      });
+    } catch (error) {
+      console.error('Error getting vendor products:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
+    }
   }
 
   async createOrder(req, res) {
     try {
-      const order = await this.senderService.placeOrder(req.body, req.userId);
+      const order = await this.vendorService.createOrder(req.userId, req.body);
       res.status(201).json({
         status: true,
         data: {
           orderId: order._id,
-          senderId: order.senderID,
           vendorId: order.vendorID,
           products: order.products,
           totalPrice: order.totalPrice,
@@ -23,21 +142,20 @@ class SenderController {
       });
     } catch (error) {
       console.error('Error creating order:', error.message);
-      const statusCode = error.message.includes('Invalid sender') || error.message.includes('Unauthorized') ? 401 :
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not owned') ? 401 :
                          error.message.includes('not found') ? 404 : 400;
       res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 
-  async fundOrder(req, res) {
+  async receiveOrder(req, res) {
     try {
-      const fundRequest = { orderId: req.params.orderId, amount: req.body.amount, senderWalletPrivateKey: req.body.senderWalletPrivateKey };
-      const order = await this.senderService.fundOrder(fundRequest, req.userId);
+      const { orderId } = req.params;
+      const order = await this.vendorService.receiveOrder(req.userId, orderId);
       res.status(200).json({
         status: true,
         data: {
           orderId: order._id,
-          senderId: order.senderID,
           vendorId: order.vendorID,
           products: order.products,
           totalPrice: order.totalPrice,
@@ -46,22 +164,45 @@ class SenderController {
         },
       });
     } catch (error) {
-      console.error('Error funding order:', error.message);
-      const statusCode = error.message.includes('Unauthorized') ? 401 :
+      console.error('Error receiving order:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not assigned') ? 401 :
                          error.message.includes('not found') ? 404 : 400;
       res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 
-  async trackOrder(req, res) {
+  async prepareGoods(req, res) {
     try {
-      const trackRequest = { orderId: req.params.orderId };
-      const order = await this.senderService.trackOrder(trackRequest, req.userId);
+      const { orderId } = req.params;
+      const order = await this.vendorService.prepareGoods(req.userId, orderId);
       res.status(200).json({
         status: true,
         data: {
           orderId: order._id,
-          senderId: order.senderID,
+          vendorId: order.vendorID,
+          products: order.products,
+          totalPrice: order.totalPrice,
+          status: order.status,
+          trustlessSwapID: order.trustlessSwapID,
+        },
+      });
+    } catch (error) {
+      console.error('Error preparing goods:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not assigned') ? 401 :
+                         error.message.includes('not found') ? 404 : 400;
+      res.status(statusCode).json({ status: false, message: error.message });
+    }
+  }
+
+  async uploadProof(req, res) {
+    try {
+      const { orderId } = req.params;
+      const { proofUrl } = req.body;
+      const order = await this.vendorService.uploadProof(req.userId, orderId, proofUrl);
+      res.status(200).json({
+        status: true,
+        data: {
+          orderId: order._id,
           vendorId: order.vendorID,
           products: order.products,
           totalPrice: order.totalPrice,
@@ -71,66 +212,13 @@ class SenderController {
         },
       });
     } catch (error) {
-      console.error('Error tracking order:', error.message);
-      const statusCode = error.message.includes('Unauthorized') ? 401 :
-                         error.message.includes('not found') ? 404 : 400;
-      res.status(statusCode).json({ status: false, message: error.message });
-    }
-  }
-
-  async confirmReceipt(req, res) {
-    try {
-      const confirmRequest = { orderId: req.params.orderId, unlockKey: req.body.unlockKey };
-      const { order, txDigest } = await this.senderService.confirmReceipt(confirmRequest, req.userId);
-      res.status(200).json({
-        status: true,
-        data: {
-          order: {
-            orderId: order._id,
-            senderId: order.senderID,
-            vendorId: order.vendorID,
-            products: order.products,
-            totalPrice: order.totalPrice,
-            status: order.status,
-            trustlessSwapID: order.trustlessSwapID,
-          },
-          txDigest,
-        },
-      });
-    } catch (error) {
-      console.error('Error confirming receipt:', error.message);
-      const statusCode = error.message.includes('Unauthorized') || error.message.includes('Invalid unlock key') ? 401 :
-                         error.message.includes('not found') ? 404 : 400;
-      res.status(statusCode).json({ status: false, message: error.message });
-    }
-  }
-
-  async cancelOrder(req, res) {
-    try {
-      const cancelRequest = { orderId: req.params.orderId, senderWalletPrivateKey: req.body.senderWalletPrivateKey };
-      const { order, txDigest } = await this.senderService.cancelOrder(cancelRequest, req.userId);
-      res.status(200).json({
-        status: true,
-        data: {
-          order: {
-            orderId: order._id,
-            senderId: order.senderID,
-            vendorId: order.vendorID,
-            products: order.products,
-            totalPrice: order.totalPrice,
-            status: order.status,
-            trustlessSwapID: order.trustlessSwapID,
-          },
-          txDigest,
-        },
-      });
-    } catch (error) {
-      console.error('Error canceling order:', error.message);
-      const statusCode = error.message.includes('Unauthorized') ? 401 :
+      console.error('Error uploading proof:', error.message);
+      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not assigned') ? 401 :
                          error.message.includes('not found') ? 404 : 400;
       res.status(statusCode).json({ status: false, message: error.message });
     }
   }
 }
 
-module.exports = SenderController;
+module.exports = new VendorController();
+```
