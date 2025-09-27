@@ -1,10 +1,15 @@
-// services/impl/vendorServiceImpl.js
 const VendorService = require('./vendorService');
 const ProductService = require('./productServiceImpl');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const OrderStatus = require("../models/Status")
 
 class VendorServiceImpl extends VendorService {
+  constructor(pproductService = new productService()) {
+    super();
+    this.productService = this.productService;
+  }
+  
   async addProduct(vendorId, productData) {
     return await ProductService.createProduct(vendorId, productData);
   }

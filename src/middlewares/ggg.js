@@ -1,270 +1,178 @@
-const mongoose = require('mongoose');
-const AuthServiceImpl = require('../../src/services/authServiceImpl');
-const User = require('../../src/models/User');
-const Sender = require('../../src/models/Sender');
-const Vendor = require('../../src/models/Vendor');
-const AuthResponse = require('../../src/dtos/response/AuthResponse');
-const bcrypt = require('bcrypt');
-const connectDB = require('../../src/config/db');
+const crypto = require('crypto');
+const SenderService = require('./SenderService');
+const Order = require('../models/Order');
+const Product = require('../models/Product');
+const User = require('../models/User');
+const Roles = require('../models/Roles');
+const Status = require('../models/Status');
+const OrderRequestValidator = require('../validators/orderRequestValidator');
+const FundOrderRequestValidator = require('../validators/fundOrderRequestValidator');
+const ConfirmReceiptRequestValidator = require('../validators/confirmReceiptRequestValidator');
+const CancelOrderRequestValidator = require('../validators/cancelOrderValidator');
+const TrackOrderRequestValidator = require('../validators/trackOrderRequestValidator');
+const SuiEscrowService = require('./suiEscrowService');
+const ProductService = require('./productServiceImpl');
+const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
-jest.setTimeout(30000);
-jest.mock('bcrypt', () => ({
-  hash: jest.fn().mockResolvedValue('hashedPassword'),
-  compare: jest.fn().mockResolvedValue(true),
-}));
-jest.mock('../../src/services/JwtService');
+class SenderServiceImpl extends SenderService {
+  constructor(suiEscrowService = new SuiEscrowService(), productService = new ProductService()) {
+    super();
+    this.suiEscrowService = suiEscrowService;
+    this.productService = productService;
+  }
 
-describe('AuthServiceImpl (persistent MongoDB)', () => {
-  let authService;
-  let jwtServiceMock;
-
-  const senderData = {
-    email: '1234@gmail.com',
-    firstName: 'Ibrahim',
-    lastName: 'Doe',
-    password: 'password',
-    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    role: 'sender',
-    phone: '07015366234',
-    address: '123 Main St, Lagos',
-  };
-
-  const vendorData = {
-    email: 'bramtech@gmail.com',
-    firstName: 'Adedeji',
-    lastName: 'Doe',
-    password: 'password',
-    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    role: 'vendor',
-    phone: '08015366234',
-    address: '123 Main St, Lagos',
-  };
-
-  const loginData = {
-    email: 'bramtech@gmail.com',
-    password: 'password',
-  };
-
-  beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
-    process.env.JWT_SECRET = 'test-secret';
-    try {
-      await connectDB();
-      console.log('Connected to persistent test DB (cambia_test) for manual inspection.');
-    } catch (error) {
-      console.error('Failed to connect to MongoDB:', error);
-      throw error;
+  async placeOrder(orderRequest, senderId) {
+    if (!process.env.VERIFIER_ADDRESS) {
+      throw new Error('VERIFIER_ADDRESS environment variable is required');
     }
-  });
+    const validatedRequest = OrderRequestValidator.validate(orderRequest);
 
-  afterAll(async () => {
-    await mongoose.connection.close();
-  });
+    const sender = await User.findById(senderId);
+    if (!sender || sender.role !== Roles.SENDER) throw new Error('Invalid sender');
 
-  beforeEach(async () => {
-    jwtServiceMock = {
-      sign: jest.fn().mockReturnValue('mocked-jwt-token'),
-      verify: jest.fn().mockReturnValue({ id: 'userId', email: 'test@example.com', role: 'sender' }),
-    };
-    JwtService.mockImplementation(() => jwtServiceMock);
-    authService = new AuthServiceImpl();
-    jest.clearAllMocks();
+    let totalPrice = 0;
+    let vendorID = null;
+    const products = [];
 
-    await User.deleteMany({}).exec();
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
-  });
+    for (const item of validatedRequest.products) {
+      const product = await Product.findById(item.productId);
+      if (!product) throw new Error(`Product ${item.productId} not found`);
+      if (product.quantityAvailable < item.quantity) throw new Error(`Insufficient stock for product ${product.name}`);
 
-  afterEach(async () => {
-    await User.deleteMany({}).exec();
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
-  });
+      if (!vendorID) {
+        vendorID = product.vendor;
+      } else if (vendorID.toString() !== product.vendor.toString()) {
+        throw new Error('All products must be from the same vendor');
+      }
 
-  describe('register', () => {
-    it('should register sender successfully', async () => {
-      // Arrange
-      const data = { ...senderData };
+      totalPrice += product.price * item.quantity;
+      products.push({ productID: product._id, quantity: item.quantity });
 
-      // Act
-      const result = await authService.register(data);
+      await this.productService.updateStock(product._id, product.quantityAvailable - item.quantity);
+    }
 
-      // Assert
-      expect(result).toBeInstanceOf(AuthResponse);
-      expect(result.status).toBe(true);
-      expect(result.message).toBe('User registered successfully');
+    const vendor = await User.findById(vendorID);
+    if (!vendor || vendor.role !== Roles.VENDOR) throw new Error('Invalid vendor');
 
-      const savedSender = await Sender.findOne({ email: senderData.email });
-      expect(savedSender).toBeTruthy();
-      expect(savedSender.role).toBe('sender');
-      expect(savedSender.firstName).toBe('Ibrahim');
-      expect(bcrypt.hash).toHaveBeenCalledWith('password', 10);
+    const unlockKey = crypto.randomBytes(16).toString('hex');
+
+    const order = await Order.create({
+      senderID,
+      vendorID,
+      products,
+      totalPrice,
+      status: Status.PENDING,
+      trustlessSwapID: validatedRequest.trustlessSwapID || null,
+      unlockKey,
+      verifierAddress: process.env.VERIFIER_ADDRESS,
     });
 
-    it('should register vendor successfully', async () => {
-      // Arrange
-      const data = { ...vendorData };
+    return order;
+  }
 
-      // Act
-      const result = await authService.register(data);
+  async fundOrder(fundRequest, senderId) {
+    if (!process.env.VERIFIER_PRIVATE_KEY) {
+      throw new Error('VERIFIER_PRIVATE_KEY environment variable is required');
+    }
+    const validatedRequest = FundOrderRequestValidator.validate(fundRequest);
+    const { orderId, amount, senderWalletPrivateKey } = validatedRequest;
 
-      // Assert
-      expect(result).toBeInstanceOf(AuthResponse);
-      expect(result.status).toBe(true);
-      expect(result.message).toBe('User registered successfully');
+    const order = await Order.findById(orderId).populate('vendorID');
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+    if (order.status !== Status.PENDING) throw new Error('Order not in pending state');
+    if (order.totalPrice !== amount) throw new Error('Amount does not match order total');
 
-      const savedVendor = await Vendor.findOne({ email: vendorData.email });
-      expect(savedVendor).toBeTruthy();
-      expect(savedVendor.role).toBe('vendor');
-      expect(savedVendor.firstName).toBe('Adedeji');
-      expect(bcrypt.hash).toHaveBeenCalledWith('password', 10);
-    });
+    const sender = await User.findById(senderId);
+    if (!sender) throw new Error('Sender not found');
 
-    it('should throw error for duplicate email', async () => {
-      // Arrange
-      await Sender.create({
-        ...senderData,
-        password: 'hashedPassword',
-      });
+    const senderKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(senderWalletPrivateKey, 'hex'));
+    const trustlessSwapID = await this.suiEscrowService.createEscrow(
+      senderKeypair,
+      sender.walletAddress,
+      order.vendorID.walletAddress,
+      order.verifierAddress,
+      amount,
+      order.unlockKey
+    );
 
-      // Act & Assert
-      await expect(authService.register(senderData)).rejects.toThrow('Email already exists');
-    });
+    order.trustlessSwapID = trustlessSwapID;
+    order.status = Status.RECEIVED;
+    await order.save();
 
-    it('should throw error for invalid role', async () => {
-      // Arrange
-      const invalidData = { ...senderData, role: 'invalid' };
+    return order;
+  }
 
-      // Act & Assert
-      await expect(authService.register(invalidData)).rejects.toThrow('Invalid role');
-    });
+  async trackOrder(trackRequest, senderId) {
+    const validatedRequest = TrackOrderRequestValidator.validate(trackRequest);
+    const { orderId } = validatedRequest;
 
-    it('should throw error for invalid input data', async () => {
-      // Arrange
-      const invalidData = { ...senderData, email: '' };
+    const order = await Order.findById(orderId).populate('products.productID vendorID');
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
 
-      // Act & Assert
-      await expect(authService.register(invalidData)).rejects.toThrow(/Validation failed/);
-    });
-  });
+    return order;
+  }
 
-  describe('login', () => {
-    it('should login sender successfully and return token', async () => {
-      // Arrange
-      const hashedPassword = 'hashedPassword';
-      const user = await User.create({ ...senderData, password: hashedPassword });
+  async confirmReceipt(confirmRequest, senderId) {
+    if (!process.env.VERIFIER_PRIVATE_KEY) {
+      throw new Error('VERIFIER_PRIVATE_KEY environment variable is required');
+    }
+    const validatedRequest = ConfirmReceiptRequestValidator.validate(confirmRequest);
+    const { orderId, unlockKey } = validatedRequest;
 
-      // Act
-      const result = await authService.login({
-        email: senderData.email,
-        password: senderData.password,
-      });
+    const order = await Order.findById(orderId).populate('vendorID');
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+    if (order.status !== Status.PROOF_UPLOADED) throw new Error('Proof not uploaded');
+    if (order.unlockKey !== unlockKey) throw new Error('Invalid unlock key');
 
-      // Assert
-      expect(result).toHaveProperty('token', 'mocked-jwt-token');
-      expect(result.user).toBeInstanceOf(AuthResponse);
-      expect(result.user.status).toBe(true);
-      expect(result.user.message).toBe('Login successful');
-      expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
-      expect(jwtServiceMock.sign).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: user.id,
-          role: 'sender',
-          email: senderData.email,
-          walletAddress: senderData.walletAddress,
-        }),
-        { expiresIn: '1h' }
-      );
-    });
+    const verifierKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(process.env.VERIFIER_PRIVATE_KEY, 'hex'));
+    const txDigest = await this.suiEscrowService.verifyAndRelease(
+      verifierKeypair,
+      order.verifierAddress,
+      order.trustlessSwapID,
+      order.unlockKey,
+      order.totalPrice
+    );
 
-    it('should login vendor successfully and return token', async () => {
-      // Arrange
-      const hashedPassword = 'hashedPassword';
-      const user = await User.create({ ...vendorData, password: hashedPassword });
+    order.status = Status.DELIVERED;
+    await order.save();
+    return { order, txDigest };
+  }
 
-      // Act
-      const result = await authService.login({
-        email: vendorData.email,
-        password: vendorData.password,
-      });
+  async cancelOrder(cancelRequest, senderId) {
+    const validatedRequest = CancelOrderRequestValidator.validate(cancelRequest);
+    const { orderId, senderWalletPrivateKey } = validatedRequest;
 
-      // Assert
-      expect(result).toHaveProperty('token', 'mocked-jwt-token');
-      expect(result.user).toBeInstanceOf(AuthResponse);
-      expect(result.user.status).toBe(true);
-      expect(result.user.message).toBe('Login successful');
-      expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
-      expect(jwtServiceMock.sign).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: user.id,
-          role: 'vendor',
-          email: vendorData.email,
-          walletAddress: vendorData.walletAddress,
-        }),
-        { expiresIn: '1h' }
-      );
-    });
+    const order = await Order.findById(orderId);
+    if (!order) throw new Error('Order not found');
+    if (order.senderID.toString() !== senderId.toString()) throw new Error('Unauthorized');
+    if (order.status !== Status.PENDING && order.status !== Status.RECEIVED) {
+      throw new Error('Cannot cancel order in this state');
+    }
 
-    it('should throw error for invalid email', async () => {
-      // Act & Assert
-      await expect(
-        authService.login({ email: 'lolad3@gmail.com', password: 'password' })
-      ).rejects.toThrow('Invalid credentials');
-    });
+    const sender = await User.findById(senderId);
+    if (!sender) throw new Error('Sender not found');
 
-    it('should throw error for invalid password', async () => {
-      // Arrange
-      await User.create({ ...senderData, password: 'hashedPassword' });
-      bcrypt.compare.mockResolvedValueOnce(false);
+    const senderKeypair = Ed25519Keypair.fromSecretKey(Buffer.from(senderWalletPrivateKey, 'hex'));
+    const txDigest = await this.suiEscrowService.cancelEscrow(
+      senderKeypair,
+      sender.walletAddress,
+      order.trustlessSwapID
+    );
 
-      // Act & Assert
-      await expect(
-        authService.login({ email: senderData.email, password: 'wrongpassword' })
-      ).rejects.toThrow('Invalid credentials');
-    });
+    for (const item of order.products) {
+      const product = await Product.findById(item.productID);
+      if (product) {
+        await this.productService.updateStock(product._id, product.quantityAvailable + item.quantity);
+      }
+    }
 
-    it('should throw error for missing email or password', async () => {
-      // Act & Assert
-      await expect(authService.login({ email: '', password: '' })).rejects.toThrow(/Validation failed/);
-    });
+    order.status = Status.CANCELLED;
+    await order.save();
+    return { order, txDigest };
+  }
+}
 
-    it('should throw error for JWT signing failure', async () => {
-      // Arrange
-      await User.create({ ...senderData, password: 'hashedPassword' });
-      jwtServiceMock.sign.mockImplementationOnce(() => {
-        throw new Error('JWT signing failed');
-      });
-
-      // Act & Assert
-      await expect(
-        authService.login({ email: senderData.email, password: senderData.password })
-      ).rejects.toThrow('JWT signing failed');
-    });
-  });
-
-  describe('verifyToken', () => {
-    it('should verify a valid token successfully', async () => {
-      // Arrange
-      const token = 'valid-token';
-      const decoded = { id: 'userId', email: 'test@example.com', role: 'sender' };
-      jwtServiceMock.verify.mockReturnValue(decoded);
-
-      // Act
-      const result = await authService.verifyToken(token);
-
-      // Assert
-      expect(result).toEqual(decoded);
-      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token);
-    });
-
-    it('should throw error for invalid or expired token', async () => {
-      // Arrange
-      jwtServiceMock.verify.mockImplementationOnce(() => {
-        throw new Error('Invalid or expired token');
-      });
-
-      // Act & Assert
-      await expect(authService.verifyToken('invalid-token')).rejects.toThrow('Invalid or expired');
-    });
-  });
-});
+module.exports = new SenderServiceImpl();

@@ -1,217 +1,116 @@
-const mongoose = require('mongoose');
-const AuthServiceImpl = require('../../src/services/authServiceImpl');
-const User = require('../../src/models/User');
-const Sender = require('../../src/models/Sender');
-const Vendor = require('../../src/models/Vendor');
-const AuthResponse = require('../../src/dtos/response/AuthResponse');
-const connectDB = require('../../src/config/db');
+const VendorService = require('./vendorService');
+const ProductService = require('./productServiceImpl');
+const Order = require('../models/Order');
+const Product = require('../models/Product');
+const { OrderStatus } = require('../models/OrderStatus');
 
-// Increase Jest timeout to handle DB connection
-jest.setTimeout(30000);
+class VendorServiceImpl extends VendorService {
+  constructor(productService = new ProductService()) {
+    super();
+    this.productService = productService;
+  }
 
-describe('AuthServiceImpl (persistent MongoDB)', () => {
-  let authService;
-  let jwtServiceMock;
-  let passwordServiceMock;
-
-  const senderData = {
-    email: '1234@gmail.com',
-    firstName: 'Ibrahim',
-    lastName: 'Doe',
-    password: 'password',
-    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    role: 'sender',
-    phone: '07015366234',
-    address: '123 Main St, Lagos',
-  };
-
-  const vendorData = {
-    email: 'bramtech@gmail.com',
-    firstName: 'Adedeji',
-    lastName: 'Doe',
-    password: 'password',
-    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    role: 'vendor',
-    phone: '08015366234',
-    address: '123 Main St, Lagos',
-  };
-
-  const loginData = {
-    email: 'bramtech@gmail.com',
-    password: 'password',
-  };
-
-  beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
-    process.env.JWT_SECRET = 'test-secret';
-    try {
-      await connectDB();
-      console.log('Connected to persistent test DB (cambia_test) for manual inspection.');
-    } catch (error) {
-      console.error('Failed to connect to MongoDB:', error);
-      throw error;
+  async addProduct(vendorId, productData) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId)) {
+      throw new Error('Invalid vendor ID');
     }
-  });
+    return await this.productService.createProduct(vendorId, productData);
+  }
 
-  afterAll(async () => {
-    await mongoose.connection.close();
-  });
+  async updateProductStock(vendorId, productId, newQuantity) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(productId)) {
+      throw new Error('Invalid vendor or product ID');
+    }
+    if (newQuantity < 0) {
+      throw new Error('Quantity cannot be negative');
+    }
+    const product = await Product.findOne({ _id: productId, vendor: vendorId });
+    if (!product) {
+      throw new Error('Product not found or not owned by vendor');
+    }
+    return await this.productService.updateStock(productId, newQuantity);
+  }
 
-  beforeEach(async () => {
-    // Mock JwtService
-    jwtServiceMock = {
-      sign: jest.fn().mockReturnValue('mocked-jwt-token'),
-      verify: jest.fn().mockReturnValue({ id: 'userId', email: 'test@example.com', role: 'sender' }),
-    };
+  async updateProductPrice(vendorId, productId, newPrice) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(productId)) {
+      throw new Error('Invalid vendor or product ID');
+    }
+    if (newPrice <= 0) {
+      throw new Error('Price must be positive');
+    }
+    const product = await Product.findOne({ _id: productId, vendor: vendorId });
+    if (!product) {
+      throw new Error('Product not found or not owned by vendor');
+    }
+    return await this.productService.updatePrice(productId, newPrice);
+  }
 
-    // Mock PasswordService
-    passwordServiceMock = {
-      hash: jest.fn().mockResolvedValue('hashedPassword'),
-      compare: jest.fn().mockResolvedValue(true),
-    };
+  async deleteProduct(vendorId, productId) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(productId)) {
+      throw new Error('Invalid vendor or product ID');
+    }
+    const product = await Product.findOne({ _id: productId, vendor: vendorId });
+    if (!product) {
+      throw new Error('Product not found or not owned by vendor');
+    }
+    return await this.productService.deleteProduct(productId, vendorId);
+  }
 
-    authService = new AuthServiceImpl(jwtServiceMock, passwordServiceMock);
+  async getVendorProducts(vendorId) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId)) {
+      throw new Error('Invalid vendor ID');
+    }
+    return await this.productService.getVendorProducts(vendorId);
+  }
 
-    // Clear DB collections before each test
-    await User.deleteMany({});
-    await Sender.deleteMany({});
-    await Vendor.deleteMany({});
-  });
+  async receiveOrder(vendorId, orderId) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new Error('Invalid vendor or order ID');
+    }
+    const order = await Order.findOne({ _id: orderId, vendor: vendorId });
+    if (!order) {
+      throw new Error('Order not found or not assigned to vendor');
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new Error('Order must be in PENDING state to be received');
+    }
+    order.status = OrderStatus.RECEIVED;
+    return await order.save();
+  }
 
-  afterEach(async () => {
-    await User.deleteMany({});
-    await Sender.deleteMany({});
-    await Vendor.deleteMany({});
-  });
+  async prepareGoods(vendorId, orderId) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new Error('Invalid vendor or order ID');
+    }
+    const order = await Order.findOne({ _id: orderId, vendor: vendorId });
+    if (!order) {
+      throw new Error('Order not found or not assigned to vendor');
+    }
+    if (order.status !== OrderStatus.RECEIVED) {
+      throw new Error('Order must be in RECEIVED state to be prepared');
+    }
+    order.status = OrderStatus.PREPARING;
+    return await order.save();
+  }
 
-  describe('register', () => {
-    it('should register sender successfully', async () => {
-      const result = await authService.register(senderData);
+  async uploadProof(vendorId, orderId, proofUrl) {
+    if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new Error('Invalid vendor or order ID');
+    }
+    if (!proofUrl || typeof proofUrl !== 'string') {
+      throw new Error('Valid proof URL is required');
+    }
+    const order = await Order.findOne({ _id: orderId, vendor: vendorId });
+    if (!order) {
+      throw new Error('Order not found or not assigned to vendor');
+    }
+    if (order.status !== OrderStatus.PREPARING) {
+      throw new Error('Order must be in PREPARING state to upload proof');
+    }
+    order.proofOfPackaging = proofUrl;
+    order.status = OrderStatus.PACKAGED;
+    return await order.save();
+  }
+}
 
-      expect(result).toBeInstanceOf(AuthResponse);
-      expect(result.status).toBe(true);
-      expect(result.message).toBe('User registered successfully');
-
-      const savedSender = await Sender.findOne({ email: senderData.email });
-      expect(savedSender).toBeTruthy();
-      expect(savedSender.role).toBe('sender');
-      expect(savedSender.firstName).toBe('Ibrahim');
-      expect(passwordServiceMock.hash).toHaveBeenCalledWith('password');
-    });
-
-    it('should register vendor successfully', async () => {
-      const result = await authService.register(vendorData);
-
-      expect(result).toBeInstanceOf(AuthResponse);
-      expect(result.status).toBe(true);
-      expect(result.message).toBe('User registered successfully');
-
-      const savedVendor = await Vendor.findOne({ email: vendorData.email });
-      expect(savedVendor).toBeTruthy();
-      expect(savedVendor.role).toBe('vendor');
-      expect(savedVendor.firstName).toBe('Adedeji');
-      expect(passwordServiceMock.hash).toHaveBeenCalledWith('password');
-    });
-
-    it('should throw error for duplicate email', async () => {
-      await Sender.create({ ...senderData, password: 'hashedPassword' });
-
-      await expect(authService.register(senderData)).rejects.toThrow('Email already exists');
-    });
-
-    it('should throw error for invalid role', async () => {
-      const invalidData = { ...senderData, role: 'Invalid' };
-
-      await expect(authService.register(invalidData)).rejects.toThrow('Invalid role');
-    });
-
-    it('should throw error for password hashing failure', async () => {
-      passwordServiceMock.hash.mockRejectedValueOnce(new Error('Hashing failed'));
-
-      await expect(authService.register(senderData)).rejects.toThrow('Hashing failed');
-    });
-
-    it('should throw error for invalid input data', async () => {
-      const invalidData = { ...senderData, email: '' };
-
-      await expect(authService.register(invalidData)).rejects.toThrow(/email/i);
-    });
-  });
-
-  describe('login', () => {
-    it('should login sender successfully and return token', async () => {
-      await User.create({ ...senderData, password: 'hashedPassword' });
-
-      const result = await authService.login({
-        email: senderData.email,
-        password: senderData.password,
-      });
-
-      expect(result).toHaveProperty('token', 'mocked-jwt-token');
-      expect(result.user).toBeInstanceOf(AuthResponse);
-      expect(result.user.status).toBe(true);
-      expect(result.user.message).toBe('Login successful');
-      expect(passwordServiceMock.compare).toHaveBeenCalledWith('password', 'hashedPassword');
-      expect(jwtServiceMock.sign).toHaveBeenCalled();
-    });
-
-    it('should login vendor successfully and return token', async () => {
-      await User.create({ ...vendorData, password: 'hashedPassword' });
-
-      const result = await authService.login({
-        email: vendorData.email,
-        password: vendorData.password,
-      });
-
-      expect(result).toHaveProperty('token', 'mocked-jwt-token');
-      expect(result.user).toBeInstanceOf(AuthResponse);
-      expect(result.user.status).toBe(true);
-      expect(result.user.message).toBe('Login successful');
-      expect(passwordServiceMock.compare).toHaveBeenCalledWith('password', 'hashedPassword');
-      expect(jwtServiceMock.sign).toHaveBeenCalled();
-    });
-
-    it('should throw error for invalid email', async () => {
-      await expect(authService.login({ email: 'nonexistent@gmail.com', password: 'password' })).rejects.toThrow('Invalid credentials');
-    });
-
-    it('should throw error for invalid password', async () => {
-      await User.create({ ...senderData, password: 'hashedPassword' });
-      passwordServiceMock.compare.mockResolvedValueOnce(false);
-
-      await expect(authService.login({ email: senderData.email, password: 'wrongpassword' })).rejects.toThrow('Invalid credentials');
-    });
-
-    it('should throw error for missing email or password', async () => {
-      await expect(authService.login({ email: '', password: '' })).rejects.toThrow(/credentials/i);
-    });
-
-    it('should throw error for JWT signing failure', async () => {
-      await User.create({ ...senderData, password: 'hashedPassword' });
-      jwtServiceMock.sign.mockImplementationOnce(() => { throw new Error('JWT signing failed'); });
-
-      await expect(authService.login({ email: senderData.email, password: senderData.password })).rejects.toThrow('JWT signing failed');
-    });
-  });
-
-  describe('verifyToken', () => {
-    it('should verify a valid token successfully', async () => {
-      const token = 'valid-token';
-      const decoded = { id: 'userId', email: 'test@example.com', role: 'sender' };
-      jwtServiceMock.verify.mockReturnValue(decoded);
-
-      const result = authService.verifyToken(token);
-
-      expect(result).toEqual(decoded);
-      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token);
-    });
-
-    it('should throw error for invalid or expired token', async () => {
-      jwtServiceMock.verify.mockImplementationOnce(() => {
-        throw new Error('Invalid token');
-      });
-
-      await expect(() => authService.verifyToken('invalid-token')).toThrow('Invalid or expired');
-    });
-  });
-});
+module.exports = new VendorServiceImpl();
