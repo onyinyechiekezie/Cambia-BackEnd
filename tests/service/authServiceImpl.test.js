@@ -65,8 +65,14 @@ describe('Authentication service tests', () => {
         
         bcrypt.hash.mockResolvedValue('hashedPassword');
         bcrypt.compare.mockResolvedValue(true);
-        uuidv4.mockReturnValue('generated-uuid');
+        jwt.sign.mockReturnValue('mocked-jwt-token');
 
+        await User.deleteMany({}).exec();
+        await Sender.deleteMany({}).exec();
+        await Vendor.deleteMany({}).exec();
+    });
+
+    afterEach(async () => {
         await User.deleteMany({}).exec();
         await Sender.deleteMany({}).exec();
         await Vendor.deleteMany({}).exec();
