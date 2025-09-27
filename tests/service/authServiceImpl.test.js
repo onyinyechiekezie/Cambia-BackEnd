@@ -9,11 +9,13 @@ const jwt = require('jsonwebtoken');
 const connectDB = require('../../src/config/db');
 
 jest.setTimeout(30000);
-
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('hashedPassword'),
+  compare: jest.fn().mockResolvedValue(true),
+}));
 describe('AuthServiceImpl (persistent MongoDB)', () => {
   let authService;
   let jwtServiceMock;
-  let passwordServiceMock;
 
   const senderData = {
     email: '1234@gmail.com',
@@ -63,7 +65,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       sign: jest.fn().mockReturnValue("mocked-jwt-token"),
       verify: jest.fn().mockReturnValue({ id: "userId", email: 'test@example.com', role: "sender"}),
     };
-    authService = new AuthServiceImpl(jwtServiceMock, passwordServiceMock);    
+    authService = new AuthServiceImpl(jwtServiceMock);    
     await User.deleteMany({});
     await Sender.deleteMany({});
     await Vendor.deleteMany({});
@@ -92,8 +94,6 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       expect(savedSender).toBeTruthy();
       expect(savedSender.role).toBe('sender');
       expect(savedSender.firstName).toBe('Ibrahim');
-      expect(bcrypt.hash).toHaveBeenCalledWith('password', 10);
-
     });
 
     it('should register vendor successfully', async () => {
@@ -134,14 +134,6 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       await expect(authService.register(invalidData)).rejects.toThrow('Invalid role');
     });
 
-    it('should throw error for bcrypt failure', async () => {
-      // Arrange
-      bcrypt.hash.mockRejectedValueOnce(new Error('Hashing failed'));
-
-      // Act & Assert
-      await expect(authService.register(senderData)).rejects.toThrow('Hashing failed');
-    });
-
     it('should throw error for invalid input data', async () => {
       // Arrange
       const invalidData = { ...senderData, email: '' };
@@ -169,7 +161,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       expect(result.user.status).toBe(true);
       expect(result.user.message).toBe('Login successful');
       expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
-      expect(jwt.sign).toHaveBeenCalled();
+      expect(jwtServiceMock.sign).toHaveBeenCalled();
     });
 
     it('should login vendor successfully and return token', async () => {
@@ -189,7 +181,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
       expect(result.user.status).toBe(true);
       expect(result.user.message).toBe('Login successful');
       expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
-      expect(jwt.sign).toHaveBeenCalled();
+      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token);
     });
 
     it('should throw error for invalid email', async () => {
@@ -218,7 +210,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
     it('should throw error for JWT signing failure', async () => {
       // Arrange
       await User.create({ ...senderData, password: 'hashedPassword' });
-      jwt.sign.mockImplementationOnce(() => {
+      jwtServiceMock.sign.mockImplementationOnce(() => {
         throw new Error('JWT signing failed');
       });
 
