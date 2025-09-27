@@ -3,10 +3,11 @@ const router = express.Router();
 const SenderController = require('../controllers/senderController');
 const AuthMiddleware = require('../middlewares/authMiddleware');
 const Roles = require('../models/Roles');
-const jwtService = require("../services/jwtService");
+const JwtService = require("../services/jwtService");
 const User = require("../models/User");
 
 const senderController = new SenderController();
+const jwtService = new JwtService(process.env.JWT_SECRET)
 const auth = new AuthMiddleware(jwtService, User);
 
 
