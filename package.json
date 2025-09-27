@@ -15,6 +15,8 @@
     "mongodb-memory-server": "^10.2.1"
   },
   "scripts": {
+    "start": "node derver.js",
+    "dev": "nodemon server.js",
     "test": "jest --runInBand"
   }
 }
