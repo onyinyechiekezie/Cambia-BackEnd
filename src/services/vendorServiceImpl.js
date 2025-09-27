@@ -75,48 +75,6 @@ class VendorServiceImpl extends VendorService {
     return await this.productService.getVendorProducts(vendorId);
   }
 
-  async createOrder(vendorId, orderRequest) {
-    if (!mongoose.Types.ObjectId.isValid(vendorId)) {
-      throw new Error('Invalid vendor ID');
-    }
-    const vendor = await User.findById(vendorId);
-    if (!vendor || vendor.role !== Roles.VENDOR) {
-      throw new Error('Invalid vendor');
-    }
-    const validated = OrderRequestValidator.validate(orderRequest);
-
-    let totalPrice = 0;
-    const products = [];
-    for (const item of validated.products) {
-      if (!mongoose.Types.ObjectId.isValid(item.productId)) {
-        throw new Error(`Invalid product ID: ${item.productId}`);
-      }
-      const product = await Product.findOne({ _id: item.productId, vendor: vendorId });
-      if (!product) {
-        throw new Error(`Product ${item.productId} not found or not owned by vendor`);
-      }
-      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
-        throw new Error(`Invalid quantity for product ${product.name}: ${item.quantity}`);
-      }
-      if (product.quantityAvailable < item.quantity) {
-        throw new Error(`Insufficient stock for product ${product.name}: ${product.quantityAvailable} available, ${item.quantity} requested`);
-      }
-      totalPrice += product.price * item.quantity;
-      products.push({ productID: product._id, quantity: item.quantity });
-      await this.productService.updateStock(product._id, product.quantityAvailable - item.quantity);
-    }
-
-    const order = await Order.create({
-      vendorID: vendorId,
-      products,
-      totalPrice,
-      status: Status.PENDING,
-      trustlessSwapID: validated.trustlessSwapID || null,
-    });
-
-    return order;
-  }
-
   async receiveOrder(vendorId, orderId) {
     if (!mongoose.Types.ObjectId.isValid(vendorId) || !mongoose.Types.ObjectId.isValid(orderId)) {
       throw new Error('Invalid vendor or order ID');
