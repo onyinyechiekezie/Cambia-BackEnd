@@ -3,15 +3,14 @@ const AuthResponse = require("../dtos/response/AuthResponse");
 const User = require('../models/User');
 const Sender = require('../models/Sender');
 const Vendor = require('../models/Vendor');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { jwtSecret, jwtExpiresIn } = require("../config/env");
 const RegisterValidator = require('../validators/registerValidator')
 const LoginValidator = require('../validators/loginValidator')
 
 class AuthServiceImpl extends AuthService {
-    constructor() {
+    constructor(jwtService, passwordService) {
         super();
+        this.jwtService = jwtService;
+        this.passwordService = passwordService;
     }
 
     async register(registerRequest) {
