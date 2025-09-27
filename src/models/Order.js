@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const Status = require('./OrderStatus');
+const Status = require('./Status');
 
 const OrderSchema = new mongoose.Schema({
   senderID: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

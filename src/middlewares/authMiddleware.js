@@ -1,26 +1,39 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const Roles = require('../models/Roles');
-const { jwtSecret } = require('../config/env');
 
 class AuthMiddleware {
-  static authorize = (requiredRole) => async (req, res, next) => {
-    try {
-      const token = req.header('Authorization')?.replace('Bearer ', '');
-      if (!token) throw new Error('Authentication token missing');
+  
+  constructor(jwtService, UserModel) {
+    this.jwtService = jwtService;
+    this.UserModel = UserModel;
+  }
 
-      const decoded = jwt.verify(token, jwtSecret);
-      const user = await User.findById(decoded.id);
-      if (!user || user.role !== requiredRole) throw new Error(`Must be a ${requiredRole}`);
+  
+  authorize(requiredRole) {
+    return async (req, res, next) => {
+      try {
+        const authHeader = req.header('Authorization');
+        if (!authHeader) throw new Error('Authentication token missing');
 
-      req.userId = user._id;
-      req.walletAddress = user.walletAddress;
-      req.role = user.role;
-      next();
-    } catch (error) {
-      res.status(401).json({ status: false, message: 'Authentication failed: ' + error.message });
-    }
-  };
+        const token = authHeader.replace('Bearer ', '');
+        const decoded = this.jwtService.verify(token);
+
+        const user = await this.UserModel.findById(decoded.id);
+        if (!user || user.role !== requiredRole) {
+          throw new Error(`Must be a ${requiredRole}`);
+        }
+
+        req.userId = user._id;
+        req.walletAddress = user.walletAddress;
+        req.role = user.role;
+
+        next();
+      } catch (error) {
+        res.status(401).json({
+          status: false,
+          message: `Authentication failed: ${error.message}`,
+        });
+      }
+    };
+  }
 }
 
 module.exports = AuthMiddleware;

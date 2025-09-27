@@ -1,24 +1,30 @@
+const crypto = require('crypto');
 const SenderService = require('./SenderService');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Roles = require('../models/Roles');
-const Status = require('../models/OrderStatus');
-const OrderRequestValidator = require('../../validator/OrderRequestValidator');
-const FundOrderRequestValidator = require('../../validator/FundOrderRequestValidator');
-const ConfirmReceiptRequestValidator = require('../../validator/ConfirmReceiptRequestValidator');
-const CancelOrderRequestValidator = require('../../validator/CancelOrderRequestValidator');
-const TrackOrderRequestValidator = require('../../validator/TrackOrderRequestValidator');
-const SuiEscrowService = require('./SuiEscrowService');
+const Status = require('../models/Status');
+const OrderRequestValidator = require('../validators/orderRequestValidator');
+const FundOrderRequestValidator = require('../validators/fundOrderRequestValidator');
+const ConfirmReceiptRequestValidator = require('../validators/confirmReceiptRequestValidator');
+const CancelOrderRequestValidator = require('../validators/cancelOrderValidator');
+const TrackOrderRequestValidator = require('../validators/trackOrderRequestValidator');
+const SuiEscrowService = require('./suiEscrowService');
+const ProductService = require('./productServiceImpl');
 const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
 class SenderServiceImpl extends SenderService {
-  constructor() {
+  constructor(suiEscrowService = new SuiEscrowService(), productService = new ProductService()) {
     super();
-    this.suiEscrowService = new SuiEscrowService();
+    this.suiEscrowService = suiEscrowService;
+    this.productService = productService;
   }
 
   async placeOrder(orderRequest, senderId) {
+    if (!process.env.VERIFIER_ADDRESS) {
+      throw new Error('VERIFIER_ADDRESS environment variable is required');
+    }
     const validatedRequest = OrderRequestValidator.validate(orderRequest);
 
     const sender = await User.findById(senderId);
@@ -31,7 +37,7 @@ class SenderServiceImpl extends SenderService {
     for (const item of validatedRequest.products) {
       const product = await Product.findById(item.productId);
       if (!product) throw new Error(`Product ${item.productId} not found`);
-      if (product.quantityAvailable < item.quantity) throw new Error(`Insufficient stock for product ${item.productId}`);
+      if (product.quantityAvailable < item.quantity) throw new Error(`Insufficient stock for product ${product.name}`);
 
       if (!vendorID) {
         vendorID = product.vendor;
@@ -42,31 +48,32 @@ class SenderServiceImpl extends SenderService {
       totalPrice += product.price * item.quantity;
       products.push({ productID: product._id, quantity: item.quantity });
 
-      product.quantityAvailable -= item.quantity;
-      await product.save();
+      await this.productService.updateStock(product._id, product.quantityAvailable - item.quantity);
     }
 
     const vendor = await User.findById(vendorID);
     if (!vendor || vendor.role !== Roles.VENDOR) throw new Error('Invalid vendor');
 
-    const unlockKey = Math.random().toString(36).substring(2, 15);
+    const unlockKey = crypto.randomBytes(16).toString('hex');
 
-    const order = new Order({
+    const order = await Order.create({
       senderID,
       vendorID,
       products,
       totalPrice,
       status: Status.PENDING,
-      trustlessSwapID: validatedRequest.trustlessSwapID,
+      trustlessSwapID: validatedRequest.trustlessSwapID || null,
       unlockKey,
-      verifierAddress: process.env.VERIFIER_ADDRESS || '0xSOME_VERIFIER_ADDRESS',
+      verifierAddress: process.env.VERIFIER_ADDRESS,
     });
 
-    await order.save();
     return order;
   }
 
   async fundOrder(fundRequest, senderId) {
+    if (!process.env.VERIFIER_PRIVATE_KEY) {
+      throw new Error('VERIFIER_PRIVATE_KEY environment variable is required');
+    }
     const validatedRequest = FundOrderRequestValidator.validate(fundRequest);
     const { orderId, amount, senderWalletPrivateKey } = validatedRequest;
 
@@ -108,6 +115,9 @@ class SenderServiceImpl extends SenderService {
   }
 
   async confirmReceipt(confirmRequest, senderId) {
+    if (!process.env.VERIFIER_PRIVATE_KEY) {
+      throw new Error('VERIFIER_PRIVATE_KEY environment variable is required');
+    }
     const validatedRequest = ConfirmReceiptRequestValidator.validate(confirmRequest);
     const { orderId, unlockKey } = validatedRequest;
 
@@ -155,8 +165,7 @@ class SenderServiceImpl extends SenderService {
     for (const item of order.products) {
       const product = await Product.findById(item.productID);
       if (product) {
-        product.quantityAvailable += item.quantity;
-        await product.save();
+        await this.productService.updateStock(product._id, product.quantityAvailable + item.quantity);
       }
     }
 
@@ -166,4 +175,4 @@ class SenderServiceImpl extends SenderService {
   }
 }
 
-module.exports = SenderServiceImpl;
+module.exports =  SenderServiceImpl;

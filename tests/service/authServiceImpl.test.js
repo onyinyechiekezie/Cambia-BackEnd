@@ -1,168 +1,253 @@
+const mongoose = require('mongoose');
 const AuthServiceImpl = require('../../src/services/authServiceImpl');
 const User = require('../../src/models/User');
 const Sender = require('../../src/models/Sender');
 const Vendor = require('../../src/models/Vendor');
+const AuthResponse = require('../../src/dtos/response/AuthResponse');
 const bcrypt = require('bcrypt');
-const { v4: uuidv4 } = require('uuid')
-const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
+const JwtService = require('../../src/services/jwtService');
 const connectDB = require('../../src/config/db');
-const AuthResponse = require('../../src/dtos/response/AuthResponse.js');
 
-jest.mock("bcrypt", ()=> ({
-    hash: jest.fn(),
-    compare: jest.fn(),
+jest.setTimeout(30000);
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('hashedPassword'),
+  compare: jest.fn().mockResolvedValue(true),
 }));
 
-jest.mock('uuid', ()=> ({
-    v4: jest.fn(),
-}));
+// jest.mock('../../src/services/jwtService');
 
+describe('AuthServiceImpl (persistent MongoDB)', () => {
+  let authService;
+  let jwtServiceMock;
 
-describe('Authentication service tests', () => {
-    let authService;
-    const senderData = {
-            email: "1234@gmail.com",
-            firstName: "Ibrahim",
-            lastName: "Doe",
-            password: "password",
-            walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            role: "sender",
-            phone: "07015366234",
-            address: "123 Main St, Lagos"
-    };
+  const senderData = {
+    email: '1234@gmail.com',
+    firstName: 'Ibrahim',
+    lastName: 'Doe',
+    password: 'password',
+    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    role: 'sender',
+    phone: '07015366234',
+    address: '123 Main St, Lagos',
+  };
 
-    const vendorData = {
-            email: "bramtech@gmail.com",
-            firstName: "Adedeji",
-            lastName: "Doe",
-            password: "password",
-            walletAddress: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            role: "vendor",
-            phone: "08015366234",
-            address: "123 Main St, Lagos"
-    };
+  const vendorData = {
+    email: 'bramtech@gmail.com',
+    firstName: 'Adedeji',
+    lastName: 'Doe',
+    password: 'password',
+    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    role: 'vendor',
+    phone: '08015366234',
+    address: '123 Main St, Lagos',
+  };
 
-    const loginData = {
-        email: "bramtech@gmail.com",
-        password: "password",
+  const loginData = {
+    email: 'bramtech@gmail.com',
+    password: 'password',
+  };
+
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.JWT_SECRET = 'test-secret';
+    try {
+      await connectDB();
+      console.log('Connected to persistent test DB (cambia_test) for manual inspection.');
+    } catch (error) {
+      console.error('Failed to connect to MongoDB:', error);
+      throw error;
     }
+  });
 
-    beforeAll(async() => {
-        process.env.NODE_ENV = 'test';
-        await connectDB();
-        console.log('Connected to persistent test DB for manual inspection.');
+  afterAll(async () => {
+    await mongoose.connection.close();
+  });
+
+  beforeEach(async () => {
+    jwtServiceMock = {
+      sign: jest.fn().mockReturnValue("mocked-jwt-token"),
+      verify: jest.fn().mockReturnValue({ id: "userId", email: 'test@example.com', role: "sender"}),
+    };
+    authService = new AuthServiceImpl(jwtServiceMock);    
+    await User.deleteMany({});
+    await Sender.deleteMany({});
+    await Vendor.deleteMany({});
+  });
+
+  afterEach(async () => {
+    await User.deleteMany({}).exec();
+    await Sender.deleteMany({}).exec();
+    await Vendor.deleteMany({}).exec();
+  });
+
+  describe('register', () => {
+    it('should register sender successfully', async () => {
+      // Arrange
+      const data = { ...senderData };
+
+      // Act
+      const result = await authService.register(data);
+
+      // Assert
+      expect(result).toBeInstanceOf(AuthResponse);
+      expect(result.status).toBe(true);
+      expect(result.message).toBe('User registered successfully');
+
+      const savedSender = await Sender.findOne({ email: senderData.email });
+      expect(savedSender).toBeTruthy();
+      expect(savedSender.role).toBe('sender');
+      expect(savedSender.firstName).toBe('Ibrahim');
     });
 
-    afterAll(async () => {
-        await mongoose.connection.close(); 
+    it('should register vendor successfully', async () => {
+      // Arrange
+      const data = { ...vendorData };
+
+      // Act
+      const result = await authService.register(data);
+
+      // Assert
+      expect(result).toBeInstanceOf(AuthResponse);
+      expect(result.status).toBe(true);
+      expect(result.message).toBe('User registered successfully');
+
+      const savedVendor = await Vendor.findOne({ email: vendorData.email });
+      expect(savedVendor).toBeTruthy();
+      expect(savedVendor.role).toBe('vendor');
+      expect(savedVendor.firstName).toBe('Adedeji');
+
     });
 
-    beforeEach(async() => {
-        authService = new AuthServiceImpl();
-        jest.clearAllMocks();
-        
-        bcrypt.hash.mockResolvedValue('hashedPassword');
-        bcrypt.compare.mockResolvedValue(true);
-        uuidv4.mockReturnValue('generated-uuid');
+    it('should throw error for duplicate email', async () => {
+      // Arrange
+      await Sender.create({
+        ...senderData,
+        password: 'hashedPassword',
+      });
 
-        await User.deleteMany({}).exec();
-        await Sender.deleteMany({}).exec();
-        await Vendor.deleteMany({}).exec();
+      // Act & Assert
+      await expect(authService.register(senderData)).rejects.toThrow('Email already exists');
     });
 
-    describe("register user", () => {
-        
-        test("test should register sender and return success", async() => {
-        const result = await authService.register(senderData);
+    it('should throw error for invalid role', async () => {
+      // Arrange
+      const invalidData = { ...senderData, role: 'Invalid' };
 
-        expect(result).toBeInstanceOf(AuthResponse);
-        expect(result.status).toBe(true);
-        expect(senderData.role).toBe("sender");
-
-        const savedUser = await User.findOne({email: senderData.email});
-        expect(savedUser).toBeTruthy();
-        expect(savedUser.role).toBe("sender");
-
-        const savedSender = await Sender.findOne({ email: senderData.email})
-        expect(savedSender).toBeTruthy();
+      // Act & Assert
+      await expect(authService.register(invalidData)).rejects.toThrow('Invalid role');
     });
 
-        test("test should register vendor and return success", async() => {
-        const result = await authService.register(vendorData);
+    it('should throw error for invalid input data', async () => {
+      // Arrange
+      const invalidData = { ...senderData, email: '' };
 
-        expect(result).toBeInstanceOf(AuthResponse);
-        expect(result.status).toBe(true);
-        expect(vendorData.role).toBe("vendor");
+      // Act & Assert
+      await expect(authService.register(invalidData)).rejects.toThrow("Email is required");
+    });
+  });
 
-        const savedUser = await User.findOne({email: vendorData.email});
-        expect(savedUser).toBeTruthy();
-        expect(savedUser.role).toBe("vendor");
+  describe('login', () => {
+    it('should login sender successfully and return token', async () => {
+      // Arrange
+      const hashedPassword = 'hashedPassword';
+      await User.create({ ...senderData, password: hashedPassword }); // Login uses User model
 
-        const savedVendor = await Vendor.findOne({ email: vendorData.email})
-        expect(savedVendor).toBeTruthy();
+      // Act
+      const result = await authService.login({
+        email: senderData.email,
+        password: senderData.password,
+      });
+
+      // Assert
+      expect(result).toHaveProperty('token', 'mocked-jwt-token');
+      expect(result.user).toBeInstanceOf(AuthResponse);
+      expect(result.user.status).toBe(true);
+      expect(result.user.message).toBe('Login successful');
+      expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
+      expect(jwtServiceMock.sign).toHaveBeenCalled();
     });
 
-    test('should throw error for duplicate email', async () => {
-        await Sender.create({
-            email: senderData.email,
-            password: 'hashedPassword',
-            walletAddress: senderData.walletAddress,
-            role: senderData.role,
-            firstName: senderData.firstName,
-            lastName: senderData.lastName,
-            phone: senderData.phone,
-            address: senderData.address,
-          });
-    
-          await expect(authService.register(senderData)).rejects.toThrow('Email already exists');
-        });
+    it('should login vendor successfully and return token', async () => {
+      // Arrange
+      const hashedPassword = 'hashedPassword';
+      await User.create({ ...vendorData, password: hashedPassword }); // Login uses User model
+
+      // Act
+      const result = await authService.login({
+        email: vendorData.email,
+        password: vendorData.password,
+      });
+
+      // Assert
+      expect(result).toHaveProperty('token', 'mocked-jwt-token');
+      expect(result.user).toBeInstanceOf(AuthResponse);
+      expect(result.user.status).toBe(true);
+      expect(result.user.message).toBe('Login successful');
+      expect(bcrypt.compare).toHaveBeenCalledWith('password', hashedPassword);
+      expect(jwtServiceMock.sign).toHaveBeenCalled();
     });
 
-    describe("login user", ()=> {
-        test("test can login sender returns success and token ", async ()=> {
-            const hashedPassword = await bcrypt.hash(senderData.password, 10);
-            await Sender.create({ ...senderData, password: hashedPassword });
+    it('should throw error for invalid email', async () => {
+      // Act & Assert
+      await expect(
+        authService.login({ email: 'lolad3@gmail.com', password: 'password' })
+      ).rejects.toThrow('Invalid credentials');
+    });
 
-            const result = await authService.login({
-                email: senderData.email,
-                password: senderData.password
-            });
+    it('should throw error for invalid password', async () => {
+      // Arrange
+      await User.create({ ...senderData, password: 'hashedPassword' });
+      bcrypt.compare.mockResolvedValueOnce(false);
 
-            expect(result).toHaveProperty("token");
-            expect(typeof result.token).toBe("string");
+      // Act & Assert
+      await expect(
+        authService.login({ email: senderData.email, password: 'wrongpassword' })
+      ).rejects.toThrow('Invalid credentials');
+    });
 
-            expect(result.user).toBeInstanceOf(AuthResponse);
-            expect(result.user.status).toBe(true);
-            expect(result.user.message).toBe("Login successful")
-        });
+    it('should throw error for missing email or password', async () => {
+      // Act & Assert
+      await expect(authService.login({ email: '', password: '' })).rejects.toThrow("credentials is required");
+    });
 
-        test("test can login sender returns success and token", async()=>{
-            const hashedPassword = await bcrypt.hash(vendorData.password, 10);
-            await Vendor.create({ ...vendorData, password: hashedPassword });
+    it('should throw error for JWT signing failure', async () => {
+      // Arrange
+      await User.create({ ...senderData, password: 'hashedPassword' });
+      jwtServiceMock.sign.mockImplementationOnce(() => {
+        throw new Error('JWT signing failed');
+      });
 
-            const result = await authService.login({
-                email: vendorData.email,
-                password: vendorData.password
-            });
+      // Act & Assert
+      await expect(
+        authService.login({ email: senderData.email, password: senderData.password })
+      ).rejects.toThrow('JWT signing failed');
+    });
+  });
 
-            expect(result).toHaveProperty("token");
-            expect(typeof result.token).toBe("string");
+  describe('verifyToken', () => {
+    it('should verify a valid token successfully', async () => {
+      // Arrange
+      const token = 'valid-token';
+      const decoded = { id: 'userId', email: 'test@example.com', role: 'sender' };
+jwtServiceMock.verify.mockReturnValue(decoded);
 
-            expect(result.user).toBeInstanceOf(AuthResponse);
-            expect(result.user.status).toBe(true);
-            expect(result.user.message).toBe("Login successful") 
-        });
+      // Act
+      const result = await authService.verifyToken(token);
 
-        test("test should throw error for invalid email", async ()=> {
-            await expect(
-                authService.login({ email: "lolad3@gmail.com", password: "password"})
-            ).rejects.toThrow("Invalid email");
-        });
+      // Assert
+      expect(result).toEqual(decoded);
+      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token, 'test-secret');
+    });
 
-        test("should throw error for invalid input data", async()=> {
-            const invalidData = { email: "", pasword: "" };
-            await expect(authService.login(invalidData)).rejects.toThrow();
-        });
-    })
+    it('should throw error for invalid or expired token', async () => {
+      // Arrange
+      jwtServiceMock.verify.mockImplementationOnce(() => {
+        throw new Error('Invalid token');
+      });
+
+      // Act & Assert
+      expect(() => authService.verifyToken('invalid-token')).toThrow('Invalid or expired');
+
+    });
+  });
 });
