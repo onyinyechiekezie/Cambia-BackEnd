@@ -225,7 +225,7 @@ describe('AuthServiceImpl (persistent MongoDB)', () => {
 
     it('should throw error for missing email or password', async () => {
       // Act & Assert
-      await expect(authService.login({ email: '', password: '' })).rejects.toThrow("Invalid credentials");
+      await expect(authService.login({ email: '', password: '' })).rejects.toThrow("credentials is required");
     });
 
     it('should throw error for JWT signing failure', async () => {
