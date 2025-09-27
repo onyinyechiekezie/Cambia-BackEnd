@@ -1,3 +1,5 @@
+// services/AuthServiceImpl.js
+
 const AuthService = require('./authService');
 const AuthResponse = require('../dtos/response/AuthResponse');
 const User = require('../models/User');
@@ -32,4 +34,24 @@ class AuthServiceImpl extends AuthService {
     const validated = LoginValidator.validate(loginRequest);
 
     const user = await User.findOne({ email: validated.email });
-    if (!user) throw new Error('Invalid credentials'
+    if (!user) throw new Error('Invalid credentials');
+
+    const isPasswordValid = await this.passwordService.compare(validated.password, user.password);
+    if (!isPasswordValid) throw new Error('Invalid credentials');
+
+    const token = this.jwtService.sign({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      walletAddress: user.walletAddress
+    });
+
+    return { token, user: new AuthResponse('Login successful', true) };
+  }
+
+  verifyToken(token) {
+    return this.jwtService.verify(token);
+  }
+}
+
+module.exports = AuthServiceImpl;

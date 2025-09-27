@@ -1,38 +1,56 @@
-coconst mongoose = require('mongoose');
-const SenderServiceImpl = require('../services/SenderServiceImpl');
-const Sender = require('../models/Sender');
-const Vendor = require('../models/Vendor');
-const Product = require('../models/Product');
-const Order = require('../models/Order');
-const Roles = require('../models/Roles');
-const Status = require('../models/OrderStatus');
-const OrderRequest = require('../../dto/request/OrderRequest');
-const FundOrderRequest = require('../../dto/request/FundOrderRequest');
-const TrackOrderRequest = require('../../dto/request/TrackOrderRequest');
-const ConfirmReceiptRequest = require('../../dto/request/ConfirmReceiptRequest');
-const CancelOrderRequest = require('../../dto/request/CancelOrderRequest');
-const SuiEscrowService = require('../services/SuiEscrowService');
-const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
-const connectDB = require('../config/db');
+const mongoose = require('mongoose');
+const AuthServiceImpl = require('../../src/services/authServiceImpl');
+const User = require('../../src/models/User');
+const Sender = require('../../src/models/Sender');
+const Vendor = require('../../src/models/Vendor');
+const AuthResponse = require('../../src/dtos/response/AuthResponse');
+const connectDB = require('../../src/config/db');
 
-// Mock SuiEscrowService
-jest.mock('../services/SuiEscrowService');
+// Increase Jest timeout to handle DB connection
+jest.setTimeout(30000);
 
-describe('SenderServiceImpl', () => {
-  let senderService;
-  let senderId;
-  let vendorId;
-  let productId;
-  let orderId;
-  let trustlessSwapId = '0x1234567890abcdef';
-  let unlockKey = 'randomkey123';
+describe('AuthServiceImpl (persistent MongoDB)', () => {
+  let authService;
+  let jwtServiceMock;
+  let passwordServiceMock;
+
+  const senderData = {
+    email: '1234@gmail.com',
+    firstName: 'Ibrahim',
+    lastName: 'Doe',
+    password: 'password',
+    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    role: 'sender',
+    phone: '07015366234',
+    address: '123 Main St, Lagos',
+  };
+
+  const vendorData = {
+    email: 'bramtech@gmail.com',
+    firstName: 'Adedeji',
+    lastName: 'Doe',
+    password: 'password',
+    walletAddress: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    role: 'vendor',
+    phone: '08015366234',
+    address: '123 Main St, Lagos',
+  };
+
+  const loginData = {
+    email: 'bramtech@gmail.com',
+    password: 'password',
+  };
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
-    process.env.VERIFIER_PRIVATE_KEY = 'verifierPrivateKey';
     process.env.JWT_SECRET = 'test-secret';
-    await connectDB();
-    console.log('Connected to persistent test DB for manual inspection.');
+    try {
+      await connectDB();
+      console.log('Connected to persistent test DB (cambia_test) for manual inspection.');
+    } catch (error) {
+      console.error('Failed to connect to MongoDB:', error);
+      throw error;
+    }
   });
 
   afterAll(async () => {
@@ -40,411 +58,160 @@ describe('SenderServiceImpl', () => {
   });
 
   beforeEach(async () => {
-    senderService = new SenderServiceImpl();
-    jest.clearAllMocks();
+    // Mock JwtService
+    jwtServiceMock = {
+      sign: jest.fn().mockReturnValue('mocked-jwt-token'),
+      verify: jest.fn().mockReturnValue({ id: 'userId', email: 'test@example.com', role: 'sender' }),
+    };
 
-    // Clear collections
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
-    await Product.deleteMany({}).exec();
-    await Order.deleteMany({}).exec();
+    // Mock PasswordService
+    passwordServiceMock = {
+      hash: jest.fn().mockResolvedValue('hashedPassword'),
+      compare: jest.fn().mockResolvedValue(true),
+    };
 
-    // Setup test data
-    const sender = await Sender.create({
-      _id: new mongoose.Types.ObjectId(),
-      firstName: 'John',
-      lastName: 'Doe',
-      email: 'john@example.com',
-      password: 'hashedpassword',
-      phone: '1234567890',
-      walletAddress: '0xsender',
-      address: '123 Main St',
-      role: Roles.SENDER,
-    });
-    senderId = sender._id;
+    authService = new AuthServiceImpl(jwtServiceMock, passwordServiceMock);
 
-    const vendor = await Vendor.create({
-      _id: new mongoose.Types.ObjectId(),
-      firstName: 'Jane',
-      lastName: 'Vendor',
-      email: 'jane@example.com',
-      password: 'hashedpassword',
-      phone: '0987654321',
-      walletAddress: '0xvendor',
-      address: '456 Market St',
-      role: Roles.VENDOR,
-    });
-    vendorId = vendor._id;
-
-    const product = await Product.create({
-      _id: new mongoose.Types.ObjectId(),
-      name: 'Apple',
-      description: 'Fresh apple',
-      price: 100,
-      quantityAvailable: 50,
-      unit: 'kg',
-      category: new mongoose.Types.ObjectId(),
-      vendor: vendorId,
-    });
-    productId = product._id;
+    // Clear DB collections before each test
+    await User.deleteMany({});
+    await Sender.deleteMany({});
+    await Vendor.deleteMany({});
   });
 
   afterEach(async () => {
-    await Sender.deleteMany({}).exec();
-    await Vendor.deleteMany({}).exec();
-    await Product.deleteMany({}).exec();
-    await Order.deleteMany({}).exec();
+    await User.deleteMany({});
+    await Sender.deleteMany({});
+    await Vendor.deleteMany({});
   });
 
-  describe('createOrder', () => {
-    it('should create an order successfully', async () => {
-      // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: productId.toString(), quantity: 2 }],
-        null
-      );
+  describe('register', () => {
+    it('should register sender successfully', async () => {
+      const result = await authService.register(senderData);
 
-      // Act
-      const order = await senderService.createOrder(orderRequest, senderId);
+      expect(result).toBeInstanceOf(AuthResponse);
+      expect(result.status).toBe(true);
+      expect(result.message).toBe('User registered successfully');
 
-      // Assert
-      expect(order).toBeDefined();
-      expect(order.senderID.toString()).toBe(senderId.toString());
-      expect(order.vendorID.toString()).toBe(vendorId.toString());
-      expect(order.products).toHaveLength(1);
-      expect(order.products[0].productID.toString()).toBe(productId.toString());
-      expect(order.products[0].quantity).toBe(2);
-      expect(order.totalPrice).toBe(200);
-      expect(order.status).toBe(Status.PENDING);
-      expect(order.unlockKey).toBeDefined();
-
-      const product = await Product.findById(productId);
-      expect(product.quantityAvailable).toBe(48); // 50 - 2
+      const savedSender = await Sender.findOne({ email: senderData.email });
+      expect(savedSender).toBeTruthy();
+      expect(savedSender.role).toBe('sender');
+      expect(savedSender.firstName).toBe('Ibrahim');
+      expect(passwordServiceMock.hash).toHaveBeenCalledWith('password');
     });
 
-    it('should throw error for invalid sender', async () => {
-      // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: productId.toString(), quantity: 2 }],
-        null
-      );
-      const invalidSenderId = new mongoose.Types.ObjectId();
+    it('should register vendor successfully', async () => {
+      const result = await authService.register(vendorData);
 
-      // Act & Assert
-      await expect(senderService.createOrder(orderRequest, invalidSenderId)).rejects.toThrow('Invalid sender');
+      expect(result).toBeInstanceOf(AuthResponse);
+      expect(result.status).toBe(true);
+      expect(result.message).toBe('User registered successfully');
+
+      const savedVendor = await Vendor.findOne({ email: vendorData.email });
+      expect(savedVendor).toBeTruthy();
+      expect(savedVendor.role).toBe('vendor');
+      expect(savedVendor.firstName).toBe('Adedeji');
+      expect(passwordServiceMock.hash).toHaveBeenCalledWith('password');
     });
 
-    it('should throw error for invalid product', async () => {
-      // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: new mongoose.Types.ObjectId().toString(), quantity: 2 }],
-        null
-      );
+    it('should throw error for duplicate email', async () => {
+      await Sender.create({ ...senderData, password: 'hashedPassword' });
 
-      // Act & Assert
-      await expect(senderService.createOrder(orderRequest, senderId)).rejects.toThrow(/Product .* not found/);
+      await expect(authService.register(senderData)).rejects.toThrow('Email already exists');
     });
 
-    it('should throw error for insufficient stock', async () => {
-      // Arrange
-      const orderRequest = new OrderRequest(
-        [{ productId: productId.toString(), quantity: 100 }],
-        null
-      );
+    it('should throw error for invalid role', async () => {
+      const invalidData = { ...senderData, role: 'Invalid' };
 
-      // Act & Assert
-      await expect(senderService.createOrder(orderRequest, senderId)).rejects.toThrow(/Insufficient stock/);
+      await expect(authService.register(invalidData)).rejects.toThrow('Invalid role');
     });
 
-    it('should throw error for multiple vendors', async () => {
-      // Arrange
-      const anotherVendor = await Vendor.create({
-        _id: new mongoose.Types.ObjectId(),
-        firstName: 'Bob',
-        lastName: 'Vendor',
-        email: 'bob@example.com',
-        password: 'hashedpassword',
-        phone: '1112223333',
-        walletAddress: '0xvendor2',
-        address: '789 High St',
-        role: Roles.VENDOR,
-      });
-      const anotherProduct = await Product.create({
-        _id: new mongoose.Types.ObjectId(),
-        name: 'Orange',
-        description: 'Fresh orange',
-        price: 150,
-        quantityAvailable: 30,
-        unit: 'kg',
-        category: new mongoose.Types.ObjectId(),
-        vendor: anotherVendor._id,
-      });
+    it('should throw error for password hashing failure', async () => {
+      passwordServiceMock.hash.mockRejectedValueOnce(new Error('Hashing failed'));
 
-      const orderRequest = new OrderRequest(
-        [
-          { productId: productId.toString(), quantity: 2 },
-          { productId: anotherProduct._id.toString(), quantity: 1 },
-        ],
-        null
-      );
+      await expect(authService.register(senderData)).rejects.toThrow('Hashing failed');
+    });
 
-      // Act & Assert
-      await expect(senderService.createOrder(orderRequest, senderId)).rejects.toThrow('All products must be from the same vendor');
+    it('should throw error for invalid input data', async () => {
+      const invalidData = { ...senderData, email: '' };
+
+      await expect(authService.register(invalidData)).rejects.toThrow(/email/i);
     });
   });
 
-  describe('fundOrder', () => {
-    beforeEach(async () => {
-      const order = await Order.create({
-        senderID: senderId,
-        vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
-        totalPrice: 200,
-        status: Status.PENDING,
-        trustlessSwapID: null,
-        unlockKey,
-        verifierAddress: '0xverifier',
+  describe('login', () => {
+    it('should login sender successfully and return token', async () => {
+      await User.create({ ...senderData, password: 'hashedPassword' });
+
+      const result = await authService.login({
+        email: senderData.email,
+        password: senderData.password,
       });
-      orderId = order._id;
 
-      // Mock SuiEscrowService.createEscrow
-      SuiEscrowService.prototype.createEscrow.mockResolvedValue(trustlessSwapId);
+      expect(result).toHaveProperty('token', 'mocked-jwt-token');
+      expect(result.user).toBeInstanceOf(AuthResponse);
+      expect(result.user.status).toBe(true);
+      expect(result.user.message).toBe('Login successful');
+      expect(passwordServiceMock.compare).toHaveBeenCalledWith('password', 'hashedPassword');
+      expect(jwtServiceMock.sign).toHaveBeenCalled();
     });
 
-    it('should fund an order successfully', async () => {
-      // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'senderPrivateKey'
-      );
+    it('should login vendor successfully and return token', async () => {
+      await User.create({ ...vendorData, password: 'hashedPassword' });
 
-      // Act
-      const order = await senderService.fundOrder(fundRequest, senderId);
+      const result = await authService.login({
+        email: vendorData.email,
+        password: vendorData.password,
+      });
 
-      // Assert
-      expect(order).toBeDefined();
-      expect(order.status).toBe(Status.RECEIVED);
-      expect(order.trustlessSwapID).toBe(trustlessSwapId);
-      expect(SuiEscrowService.prototype.createEscrow).toHaveBeenCalledWith(
-        expect.any(Object), // Ed25519Keypair
-        '0xsender',
-        '0xvendor',
-        '0xverifier',
-        200,
-        unlockKey
-      );
+      expect(result).toHaveProperty('token', 'mocked-jwt-token');
+      expect(result.user).toBeInstanceOf(AuthResponse);
+      expect(result.user.status).toBe(true);
+      expect(result.user.message).toBe('Login successful');
+      expect(passwordServiceMock.compare).toHaveBeenCalledWith('password', 'hashedPassword');
+      expect(jwtServiceMock.sign).toHaveBeenCalled();
     });
 
-    it('should throw error for unauthorized sender', async () => {
-      // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'senderPrivateKey'
-      );
-      const otherSenderId = new mongoose.Types.ObjectId();
-
-      // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, otherSenderId)).rejects.toThrow('Unauthorized');
+    it('should throw error for invalid email', async () => {
+      await expect(authService.login({ email: 'nonexistent@gmail.com', password: 'password' })).rejects.toThrow('Invalid credentials');
     });
 
-    it('should throw error for non-pending order', async () => {
-      // Arrange
-      await Order.findByIdAndUpdate(orderId, { status: Status.RECEIVED });
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'senderPrivateKey'
-      );
+    it('should throw error for invalid password', async () => {
+      await User.create({ ...senderData, password: 'hashedPassword' });
+      passwordServiceMock.compare.mockResolvedValueOnce(false);
 
-      // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, senderId)).rejects.toThrow('Order not in pending state');
+      await expect(authService.login({ email: senderData.email, password: 'wrongpassword' })).rejects.toThrow('Invalid credentials');
     });
 
-    it('should throw error for incorrect amount', async () => {
-      // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        300,
-        'senderPrivateKey'
-      );
-
-      // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, senderId)).rejects.toThrow('Amount does not match order total');
+    it('should throw error for missing email or password', async () => {
+      await expect(authService.login({ email: '', password: '' })).rejects.toThrow(/credentials/i);
     });
 
-    it('should throw error for invalid sender wallet', async () => {
-      // Arrange
-      const fundRequest = new FundOrderRequest(
-        orderId.toString(),
-        200,
-        'invalidPrivateKey'
-      );
+    it('should throw error for JWT signing failure', async () => {
+      await User.create({ ...senderData, password: 'hashedPassword' });
+      jwtServiceMock.sign.mockImplementationOnce(() => { throw new Error('JWT signing failed'); });
 
-      // Act & Assert
-      await expect(senderService.fundOrder(fundRequest, senderId)).rejects.toThrow('Sender not found');
+      await expect(authService.login({ email: senderData.email, password: senderData.password })).rejects.toThrow('JWT signing failed');
     });
   });
 
-  describe('trackOrder', () => {
-    beforeEach(async () => {
-      const order = await Order.create({
-        senderID: senderId,
-        vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
-        totalPrice: 200,
-        status: Status.RECEIVED,
-        trustlessSwapID: trustlessSwapId,
-        unlockKey,
-        verifierAddress: '0xverifier',
+  describe('verifyToken', () => {
+    it('should verify a valid token successfully', async () => {
+      const token = 'valid-token';
+      const decoded = { id: 'userId', email: 'test@example.com', role: 'sender' };
+      jwtServiceMock.verify.mockReturnValue(decoded);
+
+      const result = authService.verifyToken(token);
+
+      expect(result).toEqual(decoded);
+      expect(jwtServiceMock.verify).toHaveBeenCalledWith(token);
+    });
+
+    it('should throw error for invalid or expired token', async () => {
+      jwtServiceMock.verify.mockImplementationOnce(() => {
+        throw new Error('Invalid token');
       });
-      orderId = order._id;
-    });
 
-    it('should track an order successfully', async () => {
-      // Arrange
-      const trackRequest = new TrackOrderRequest(orderId.toString());
-
-      // Act
-      const order = await senderService.trackOrder(trackRequest, senderId);
-
-      // Assert
-      expect(order).toBeDefined();
-      expect(order._id.toString()).toBe(orderId.toString());
-      expect(order.status).toBe(Status.RECEIVED);
-      expect(order.products[0].productID.name).toBe('Apple');
-    });
-
-    it('should throw error for unauthorized sender', async () => {
-      // Arrange
-      const trackRequest = new TrackOrderRequest(orderId.toString());
-      const otherSenderId = new mongoose.Types.ObjectId();
-
-      // Act & Assert
-      await expect(senderService.trackOrder(trackRequest, otherSenderId)).rejects.toThrow('Unauthorized');
-    });
-
-    it('should throw error for non-existent order', async () => {
-      // Arrange
-      const trackRequest = new TrackOrderRequest(new mongoose.Types.ObjectId().toString());
-
-      // Act & Assert
-      await expect(senderService.trackOrder(trackRequest, senderId)).rejects.toThrow('Order not found');
-    });
-  });
-
-  describe('confirmReceipt', () => {
-    beforeEach(async () => {
-      const order = await Order.create({
-        senderID: senderId,
-        vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
-        totalPrice: 200,
-        status: Status.PROOF_UPLOADED,
-        trustlessSwapID: trustlessSwapId,
-        unlockKey,
-        verifierAddress: '0xverifier',
-      });
-      orderId = order._id;
-
-      // Mock SuiEscrowService.verifyAndRelease
-      SuiEscrowService.prototype.verifyAndRelease.mockResolvedValue('0xtxDigest');
-    });
-
-    it('should confirm receipt successfully', async () => {
-      // Arrange
-      const confirmRequest = new ConfirmReceiptRequest(orderId.toString(), unlockKey);
-
-      // Act
-      const result = await senderService.confirmReceipt(confirmRequest, senderId);
-
-      // Assert
-      expect(result.order).toBeDefined();
-      expect(result.order.status).toBe(Status.DELIVERED);
-      expect(result.txDigest).toBe('0xtxDigest');
-      expect(SuiEscrowService.prototype.verifyAndRelease).toHaveBeenCalledWith(
-        expect.any(Object), // Ed25519Keypair
-        '0xverifier',
-        trustlessSwapId,
-        unlockKey,
-        200
-      );
-    });
-
-    it('should throw error for invalid unlock key', async () => {
-      // Arrange
-      const confirmRequest = new ConfirmReceiptRequest(orderId.toString(), 'wrongkey');
-
-      // Act & Assert
-      await expect(senderService.confirmReceipt(confirmRequest, senderId)).rejects.toThrow('Invalid unlock key');
-    });
-
-    it('should throw error for non-proof_uploaded order', async () => {
-      // Arrange
-      await Order.findByIdAndUpdate(orderId, { status: Status.RECEIVED });
-      const confirmRequest = new ConfirmReceiptRequest(orderId.toString(), unlockKey);
-
-      // Act & Assert
-      await expect(senderService.confirmReceipt(confirmRequest, senderId)).rejects.toThrow('Proof not uploaded');
-    });
-  });
-
-  describe('cancelOrder', () => {
-    beforeEach(async () => {
-      const order = await Order.create({
-        senderID: senderId,
-        vendorID: vendorId,
-        products: [{ productID: productId, quantity: 2 }],
-        totalPrice: 200,
-        status: Status.RECEIVED,
-        trustlessSwapID: trustlessSwapId,
-        unlockKey,
-        verifierAddress: '0xverifier',
-      });
-      orderId = order._id;
-
-      // Mock SuiEscrowService.cancelEscrow
-      SuiEscrowService.prototype.cancelEscrow.mockResolvedValue('0xtxDigest');
-    });
-
-    it('should cancel an order successfully', async () => {
-      // Arrange
-      const cancelRequest = new CancelOrderRequest(orderId.toString(), 'senderPrivateKey');
-
-      // Act
-      const result = await senderService.cancelOrder(cancelRequest, senderId);
-
-      // Assert
-      expect(result.order).toBeDefined();
-      expect(result.order.status).toBe(Status.CANCELLED);
-      expect(result.txDigest).toBe('0xtxDigest');
-      expect(SuiEscrowService.prototype.cancelEscrow).toHaveBeenCalledWith(
-        expect.any(Object), // Ed25519Keypair
-        '0xsender',
-        trustlessSwapId
-      );
-
-      const product = await Product.findById(productId);
-      expect(product.quantityAvailable).toBe(52); // 50 - 2 + 2
-    });
-
-    it('should throw error for unauthorized sender', async () => {
-      // Arrange
-      const cancelRequest = new CancelOrderRequest(orderId.toString(), 'senderPrivateKey');
-      const otherSenderId = new mongoose.Types.ObjectId();
-
-      // Act & Assert
-      await expect(senderService.cancelOrder(cancelRequest, otherSenderId)).rejects.toThrow('Unauthorized');
-    });
-
-    it('should throw error for non-cancelable order', async () => {
-      // Arrange
-      await Order.findByIdAndUpdate(orderId, { status: Status.DELIVERED });
-      const cancelRequest = new CancelOrderRequest(orderId.toString(), 'senderPrivateKey');
-
-      // Act & Assert
-      await expect(senderService.cancelOrder(cancelRequest, senderId)).rejects.toThrow('Cannot cancel order in this state');
+      await expect(() => authService.verifyToken('invalid-token')).toThrow('Invalid or expired');
     });
   });
 });

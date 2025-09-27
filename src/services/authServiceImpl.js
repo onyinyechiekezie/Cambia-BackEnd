@@ -19,7 +19,7 @@ class AuthServiceImpl extends AuthService {
         const existingUser = await User.findOne({ email: validated.email });
         if (existingUser) throw new Error("Email already exists");
         
-        const hashedPassword =  await bcrypt.hash(validated.password, 10);
+        const hashedPassword =  await this.passwordService.hash(validated.password, 10);
         const userData = { ...validated, password: hashedPassword };
 
         const model = userData.role === "sender" ? Sender : Vendor;
@@ -36,20 +36,17 @@ class AuthServiceImpl extends AuthService {
         const isPasswordValid = await bcrypt.compare(validated.password, user.password);
         if(!isPasswordValid) throw new Error("Invalid credentials");
 
-        const token = jwt.sign(
-            { id: user.id, email: user.email, role: user.role, walletAddress: user.walletAddress },
-            jwtSecret,
-            { expiresIn: jwtExpiresIn }
-        );
+        const token = jwt.sign({ 
+            id: user.id, 
+            email: user.email, 
+            role: user.role, 
+            walletAddress: user.walletAddress 
+        });
         return { token, user: new AuthResponse("Login successful", true) }
     }
 
     verifyToken(token) {
-        try {
-            return jwt.verify(token, jwtSecret);
-        } catch(error) {
-            throw new Error("Invalid or expired");
-        }
+        return this.jwtService.verify(token, jwtSecret);
     }
 }
 
