@@ -3,13 +3,13 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Roles = require('../models/Roles');
-const Status = require('../models/OrderStatus');
-const OrderRequestValidator = require('../../validator/OrderRequestValidator');
-const FundOrderRequestValidator = require('../../validator/FundOrderRequestValidator');
-const ConfirmReceiptRequestValidator = require('../../validator/ConfirmReceiptRequestValidator');
-const CancelOrderRequestValidator = require('../../validator/CancelOrderRequestValidator');
-const TrackOrderRequestValidator = require('../../validator/TrackOrderRequestValidator');
-const SuiEscrowService = require('./SuiEscrowService');
+const Status = require('../models/Status');
+const OrderRequestValidator = require('../validators/orderRequestValidator');
+const FundOrderRequestValidator = require('../validators/fundOrderRequestValidator');
+const ConfirmReceiptRequestValidator = require('../validators/confirmReceiptRequestValidator');
+const CancelOrderRequestValidator = require('../validators/cancelOrderValidator');
+const TrackOrderRequestValidator = require('../validators/trackOrderRequestValidator');
+const SuiEscrowService = require('./suiEscrowService');
 const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 
 class SenderServiceImpl extends SenderService {

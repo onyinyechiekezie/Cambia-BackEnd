@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const SenderServiceImpl = require("../../src/services/senderServiceImpl");
 const Sender = require("../../src/models/Sender");
 const Vendor = require("../../src/models/Vendor");
-const Product = require('../.../src/models/Product');
+const Product = require('../../src/models/Product');
 const Order = require('../../src/models/Order');
 const Roles = require('../../src/models/Roles');
 const Status = require('../../src/models/Status');
@@ -11,11 +11,11 @@ const FundOrderRequest = require('../../src/dtos/request/fundOrderRequest');
 const TrackOrderRequest = require('../../src/dtos/request/trackOrderRequest');
 const ConfirmReceiptRequest = require('../../src/dtos/request/confirmReceiptRequest');
 const CancelOrderRequest = require('../../src/dtos/request/cancelOrderRequest');
-const SuiEscrowService = require('../../src/services/suiEscrowService');
+const SuiEscrowService = require('../../src/services/suiEscrowService')
 const { Ed25519Keypair } = require('@mysten/sui.js/keypairs/ed25519');
 const connectDB = require('../../src/config/db');
 
-jest.Mock("../../src/services/suiEscrowService")
+jest.mock("../../src/services/suiEscrowService")
 
 describe('SenderServiceImpl', () => {
   let senderService;
@@ -104,7 +104,7 @@ describe('SenderServiceImpl', () => {
       );
 
       // Act
-      const order = await senderService.createOrder(orderRequest, senderId);
+      const order = await senderService.placeOrder(orderRequest, senderId);
 
       // Assert
       expect(order).toBeDefined();
@@ -130,7 +130,7 @@ describe('SenderServiceImpl', () => {
       const invalidSenderId = new mongoose.Types.ObjectId();
 
       // Act & Assert
-      await expect(senderService.createOrder(orderRequest, invalidSenderId)).rejects.toThrow('Invalid sender');
+      await expect(senderService.placeOrder(orderRequest, invalidSenderId)).rejects.toThrow('Invalid sender');
     });
 
     it('should throw error for invalid product', async () => {
@@ -141,7 +141,7 @@ describe('SenderServiceImpl', () => {
       );
 
       // Act & Assert
-      await expect(senderService.createOrder(orderRequest, senderId)).rejects.toThrow(/Product .* not found/);
+      await expect(senderService.placeOrder(orderRequest, senderId)).rejects.toThrow(/Product .* not found/);
     });
 
     it('should throw error for insufficient stock', async () => {
@@ -152,7 +152,7 @@ describe('SenderServiceImpl', () => {
       );
 
       // Act & Assert
-      await expect(senderService.createOrder(orderRequest, senderId)).rejects.toThrow(/Insufficient stock/);
+      await expect(senderService.placeOrder(orderRequest, senderId)).rejects.toThrow(/Insufficient stock/);
     });
 
     it('should throw error for multiple vendors', async () => {
@@ -188,7 +188,7 @@ describe('SenderServiceImpl', () => {
       );
 
       // Act & Assert
-      await expect(senderService.createOrder(orderRequest, senderId)).rejects.toThrow('All products must be from the same vendor');
+      await expect(senderService.placeOrder(orderRequest, senderId)).rejects.toThrow('All products must be from the same vendor');
     });
   });
 

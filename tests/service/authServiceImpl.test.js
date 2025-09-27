@@ -3,7 +3,6 @@ const User = require('../../src/models/User');
 const Sender = require('../../src/models/Sender');
 const Vendor = require('../../src/models/Vendor');
 const bcrypt = require('bcrypt');
-const { v4: uuidv4 } = require('uuid')
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const connectDB = require('../../src/config/db');
@@ -14,8 +13,9 @@ jest.mock("bcrypt", ()=> ({
     compare: jest.fn(),
 }));
 
-jest.mock('uuid', ()=> ({
-    v4: jest.fn(),
+jest.mock('jsonwebtoken', ()=> ({
+    sign: jest.fn(),
+    verify: jest.fn(,)
 }));
 
 
