@@ -7,29 +7,6 @@ class VendorController {
 
   async addProduct(req, res) {
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      const vendorId = req.params.vendorId; // or from auth later
-      const productData = req.body;
-      const product = await vendorService.addProduct(vendorId, productData);
-      res.status(201).json(product);
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  }
-
-=======
-      const vendorId = req.user._id; // assuming auth middleware adds user
-      const product = await vendorService.addProduct(vendorId, req.body);
-      res.status(201).json(product);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
-
-
->>>>>>> f9aa81cc33535585a0cb14718a4b9e675b079f15
-=======
       const product = await this.vendorService.addProduct(req.userId, req.body);
       res.status(201).json({
         status: true,
@@ -148,28 +125,7 @@ class VendorController {
     }
   }
 
-  async createOrder(req, res) {
-    try {
-      const order = await this.vendorService.createOrder(req.userId, req.body);
-      res.status(201).json({
-        status: true,
-        data: {
-          orderId: order._id,
-          vendorId: order.vendorID,
-          products: order.products,
-          totalPrice: order.totalPrice,
-          status: order.status,
-          trustlessSwapID: order.trustlessSwapID,
-        },
-      });
-    } catch (error) {
-      console.error('Error creating order:', error.message);
-      const statusCode = error.message.includes('Invalid vendor') || error.message.includes('not owned') ? 401 :
-                         error.message.includes('not found') ? 404 : 400;
-      res.status(statusCode).json({ status: false, message: error.message });
-    }
-  }
-
+  
   async receiveOrder(req, res) {
     try {
       const { orderId } = req.params;
@@ -240,7 +196,6 @@ class VendorController {
       res.status(statusCode).json({ status: false, message: error.message });
     }
   }
->>>>>>> userService
 }
 
 module.exports = new VendorController();
